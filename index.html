@@ -250,7 +250,7 @@ var ICONS={
 
 /* ---------- state ---------- */
 var DEFAULT_RATE=8;
-var state={filaments:[],printers:[],products:[],customers:[],sales:[],settings:{currency:'INR',lowStock:200,powerRate:DEFAULT_RATE},
+var state={filaments:[],printers:[],products:[],customers:[],sales:[],settings:{currency:'INR',lowStock:200,powerRate:DEFAULT_RATE,googleSheetsUrl:'',lastSheetsSync:''},
   loaded:{},ready:false,view:'overview',period:'30',q:'',storage:'workspace'};
 var ver=0,statsVer=-1,statsCache=null,backend=null,dlCap=null;
 
@@ -271,6 +271,123 @@ function fmtDate(s){
 function signed(n,dp){return (n<0?'\u2212':'')+money(Math.abs(n),dp);}
 
 /* ---------- storage backends ---------- */
+/*
+ * Cloud backend:
+ * VFORGE uses Supabase Auth + a single RLS-protected table.
+ * The browser stores only the public project URL/key and a refresh token.
+ * No password is stored by the CRM.
+ */
+var CLOUD_LOCAL_KEY='vforge3d:cloud';
+// Public Supabase project details. Safe to include in a browser app when RLS is enabled.
+var DEFAULT_CLOUD_URL='https://ogvbazpddpspmxvlypu.supabase.co';
+var DEFAULT_CLOUD_KEY='sb_publishable_909chAD-mfxaSgrTNYKRXg_XOtgMbr_';
+var cloudSession=null;
+var cloudPollers=[];
+function getCloudConfig(){
+  try{
+    var saved=JSON.parse(localStorage.getItem(CLOUD_LOCAL_KEY)||'{}')||{};
+    return Object.assign({url:DEFAULT_CLOUD_URL,anonKey:DEFAULT_CLOUD_KEY},saved);
+  }catch(e){return {url:DEFAULT_CLOUD_URL,anonKey:DEFAULT_CLOUD_KEY};}
+}
+function setCloudConfig(c){
+  try{localStorage.setItem(CLOUD_LOCAL_KEY,JSON.stringify(c||{}));}catch(e){}
+}
+function clearCloudConfig(){
+  try{localStorage.removeItem(CLOUD_LOCAL_KEY);}catch(e){}
+}
+function cloudUrlBase(){
+  var c=getCloudConfig();
+  return String(c.url||'').replace(/\/+$/,'');
+}
+function cloudHeaders(extra){
+  var c=getCloudConfig(),h={
+    apikey:String(c.anonKey||''),
+    'Content-Type':'application/json'
+  };
+  if(cloudSession&&cloudSession.access_token)h.Authorization='Bearer '+cloudSession.access_token;
+  Object.assign(h,extra||{});
+  return h;
+}
+function cloudFetch(path,opts){
+  var url=cloudUrlBase()+path;
+  return fetch(url,Object.assign({headers:cloudHeaders()},opts||{})).then(function(r){
+    return r.text().then(function(t){
+      var data=null;try{data=t?JSON.parse(t):null;}catch(e){data=t;}
+      if(!r.ok){
+        var msg=(data&&data.msg)||(data&&data.message)||(data&&data.error_description)||('HTTP '+r.status);
+        var err=new Error(msg);err.status=r.status;err.body=data;throw err;
+      }
+      return data;
+    });
+  });
+}
+function cloudAuth(mode,email,password){
+  var c=getCloudConfig();
+  if(!c.url||!c.anonKey) return Promise.reject(new Error('Enter the Supabase Project URL and anon key first.'));
+  var path=mode==='signup'?'/auth/v1/signup':'/auth/v1/token?grant_type=password';
+  return fetch(String(c.url).replace(/\/+$/,'')+path,{
+    method:'POST',
+    headers:{apikey:c.anonKey,'Content-Type':'application/json'},
+    body:JSON.stringify({email:email,password:password})
+  }).then(function(r){return r.text().then(function(t){
+    var data=null;try{data=t?JSON.parse(t):null;}catch(e){data=t;}
+    if(!r.ok){
+      var msg=(data&&data.msg)||(data&&data.message)||(data&&data.error_description)||('HTTP '+r.status);
+      throw new Error(msg);
+    }
+    return data;
+  });});
+}
+function cloudRefresh(){
+  var c=getCloudConfig();
+  if(!c.refreshToken||!c.url||!c.anonKey)return Promise.reject(new Error('No saved cloud session.'));
+  return fetch(String(c.url).replace(/\/+$/,'')+'/auth/v1/token?grant_type=refresh_token',{
+    method:'POST',
+    headers:{apikey:c.anonKey,'Content-Type':'application/json'},
+    body:JSON.stringify({refresh_token:c.refreshToken})
+  }).then(function(r){return r.text().then(function(t){
+    var data=null;try{data=t?JSON.parse(t):null;}catch(e){data=t;}
+    if(!r.ok)throw new Error((data&&data.error_description)||(data&&data.msg)||('HTTP '+r.status));
+    cloudSession=data;
+    var cfg=getCloudConfig();cfg.refreshToken=data.refresh_token||cfg.refreshToken;cfg.userId=data.user&&data.user.id||cfg.userId;setCloudConfig(cfg);
+    return data;
+  });});
+}
+function makeSupabaseBackend(){
+  var c=getCloudConfig();
+  if(!c.url||!c.anonKey||!cloudSession||!cloudSession.user)return null;
+  function rows(col){
+    return cloudFetch('/rest/v1/vforge_records?collection=eq.'+encodeURIComponent(col)+'&select=id,data&order=id.asc')
+      .then(function(a){return (a||[]).map(function(r){return Object.assign({id:r.id},r.data||{});});});
+  }
+  function stopPollers(){cloudPollers.forEach(function(x){clearInterval(x);});cloudPollers=[];}
+  stopPollers();
+  return {
+    kind:'cloud',
+    fetch:function(col){return rows(col);},
+    subscribe:function(col,cb,onErr){
+      var active=true;
+      function pull(){if(!active)return;rows(col).then(cb).catch(function(e){if(onErr)onErr(e);});}
+      pull();
+      var timer=setInterval(pull,10000);cloudPollers.push(timer);
+      return function(){active=false;clearInterval(timer);};
+    },
+    save:function(col,id,data){
+      var payload={user_id:cloudSession.user.id,collection:col,id:String(id),data:data,updated_at:new Date().toISOString()};
+      return cloudFetch('/rest/v1/vforge_records?on_conflict=user_id,collection,id',{
+        method:'POST',
+        headers:cloudHeaders({Prefer:'resolution=merge-duplicates,return=minimal'}),
+        body:JSON.stringify([payload])
+      });
+    },
+    remove:function(col,id){
+      return cloudFetch('/rest/v1/vforge_records?collection=eq.'+encodeURIComponent(col)+'&id=eq.'+encodeURIComponent(id),{
+        method:'DELETE',headers:cloudHeaders({Prefer:'return=minimal'})
+      });
+    },
+    newId:function(){return Date.now().toString(36)+Math.random().toString(36).slice(2,9);}
+  };
+}
 function makeDbBackend(db){
   return {
     kind:'workspace',
@@ -311,6 +428,8 @@ function errMsg(e){
   if(c==='quota_exceeded')return 'Storage is full. Delete some old records and try again.';
   if(c==='invalid_argument')return 'You can view this workspace but not change it.';
   if(c==='revoked')return 'Access to this workspace changed. Reload the page.';
+  if(e&&e.status===401)return 'Cloud session expired. Reconnect in Settings.';
+  if(e&&e.status===403)return 'Cloud access denied. Check the Supabase RLS policies.';
   return (e&&e.message)||'Could not save. Try again.';
 }
 var autoSheetsTimer=null,autoSheetsBusy=false,autoSheetsQueued=false;
@@ -328,9 +447,6 @@ function queueAutoSheetsSync(reason){
   },900);
 }
 function syncStateAfterSave(col){
-  // Force a fresh read before Google Sheets sync. This guarantees the
-  // payload contains the record that was just saved, even if the live
-  // listener has not delivered its snapshot yet.
   return Promise.resolve().then(function(){return backend.fetch(col);}).then(function(docs){
     onDocs(col,docs);
     return true;
@@ -347,6 +463,54 @@ function remove(col,id){
     if(['filaments','products','sales','customers'].indexOf(col)>=0)return syncStateAfterSave(col);
     return true;
   },function(e){toast(errMsg(e),true);return false;});
+}
+function migrateLocalToCloud(){
+  var local=makeLocalBackend();
+  var collections=COLS.slice();
+  var writes=[];
+  collections.forEach(function(col){
+    var docs=col==='settings'?[{id:'main',data:state.settings}]:state[col].map(function(x){var copy=Object.assign({},x);delete copy.id;return {id:x.id,data:copy};});
+    docs.forEach(function(d){writes.push(backend.save(col,d.id,d.data));});
+  });
+  return Promise.all(writes);
+}
+function stopCloudPolling(){cloudPollers.forEach(function(x){clearInterval(x);});cloudPollers=[];}
+function connectCloudFromForm(form,signup){
+  var url=ctl(form,'cloud-url').value.trim().replace(/\/+$/,'');
+  var key=ctl(form,'cloud-key').value.trim();
+  var email=ctl(form,'cloud-email').value.trim();
+  var password=ctl(form,'cloud-password').value;
+  if(!url||!key||!email||!password){toast('Enter Supabase URL, anon key, email and password.',true);return;}
+  setCloudConfig({url:url,anonKey:key,email:email});
+  toast(signup?'Creating cloud account…':'Connecting to cloud…');
+  cloudAuth(signup?'signup':'signin',email,password).then(function(data){
+    if(signup&&!data.access_token){
+      toast('Account created. Confirm your email, then press Connect Cloud.');
+      return;
+    }
+    cloudSession=data;
+    var cfg=getCloudConfig();cfg.refreshToken=data.refresh_token;cfg.userId=data.user&&data.user.id;setCloudConfig(cfg);
+    var oldBackend=backend;
+    backend=makeSupabaseBackend();
+    state.storage='cloud';
+    renderNotice();
+    return migrateLocalToCloud().then(function(){
+      return refresh(false);
+    }).then(function(){
+      toast('✓ VFORGE cloud database connected');
+      closeDrawer();
+    });
+  }).catch(function(e){toast('Cloud connection failed: '+errMsg(e),true);});
+}
+function disconnectCloud(){
+  stopCloudPolling();
+  cloudSession=null;
+  clearCloudConfig();
+  backend=makeLocalBackend();
+  state.storage=backend.kind;
+  renderNotice();
+  refresh(false);
+  toast('Cloud disconnected. CRM is back to browser storage.');
 }
 
 /* ---------- derived numbers ---------- */
@@ -455,7 +619,8 @@ function renderNav(){
 }
 function renderNotice(){
   var n=$('#notice');
-  if(state.storage==='device')n.innerHTML='<div class="note">Working offline: entries are saved in this browser only.</div>';
+  if(state.storage==='cloud')n.innerHTML='<div class="note" style="background:var(--accent-wash);color:var(--ink)">✓ Cloud database connected — VFORGE data is synced online.</div>';
+  else if(state.storage==='device')n.innerHTML='<div class="note">Working offline: entries are saved in this browser only. Connect the cloud database in Settings.</div>';
   else if(state.storage==='memory')n.innerHTML='<div class="note">Storage is blocked here, so entries will be lost when you close this page.</div>';
   else n.innerHTML='';
 }
@@ -1094,11 +1259,23 @@ function offerFile(name,data){
   Promise.resolve(dlCap.save({filename:name,data:data})).then(function(){toast('File saved');},function(e){if(e&&e.code==='declined')return;toast('Could not save the file.',true);});
 }
 function openSettings(){
-  var s=state.settings;
+  var s=state.settings,cc=getCloudConfig();
+  var cloudStatus=state.storage==='cloud'
+    ?'<div class="note" style="margin-bottom:14px;background:var(--accent-wash);color:var(--ink)">✓ Connected to cloud'+(cc.email?' as '+esc(cc.email):'')+'</div>'
+    :'<div class="note" style="margin-bottom:14px">Cloud database is not connected. Your current records are stored in this browser only.</div>';
   var html='<div class="dbody"><div class="part">'
-    +'<div class="field"><label for="st-cur">Currency</label><select id="st-cur" name="currency">'+CURRENCIES.map(function(c){return '<option value="'+c[0]+'"'+(c[0]===s.currency?' selected':'')+'>'+c[0]+', '+c[1]+'</option>';}).join('')+'</select></div>'
+    +cloudStatus
+    +'<h3>Cloud database</h3><p class="hint">Use a Supabase project so your VFORGE data is available on every computer. The anon key is designed for browser use; database security comes from the RLS policy in the setup SQL.</p>'
+    +'<div class="field"><label for="st-cloud-url">Supabase Project URL</label><input id="st-cloud-url" name="cloud-url" type="url" placeholder="https://xxxxxxxx.supabase.co" value="'+esc(cc.url||'')+'"></div>'
+    +'<div class="field"><label for="st-cloud-key">Supabase publishable key</label><input id="st-cloud-key" name="cloud-key" type="password" autocomplete="off" placeholder="sb_publishable_..."></div>'
+    +'<div class="field"><label for="st-cloud-email">Cloud login email</label><input id="st-cloud-email" name="cloud-email" type="email" value="'+esc(cc.email||'')+'" autocomplete="username"></div>'
+    +'<div class="field"><label for="st-cloud-password">Cloud password</label><input id="st-cloud-password" name="cloud-password" type="password" autocomplete="current-password" placeholder="Not stored by CRM"></div>'
+    +'<div style="display:flex;gap:10px;flex-wrap:wrap"><button type="button" class="btn primary" data-cloud-action="connect">Connect Cloud</button><button type="button" class="btn" data-cloud-action="signup">Create cloud account</button>'+(state.storage==='cloud'?'<button type="button" class="btn danger" data-cloud-action="disconnect">Disconnect</button>':'')+'</div>'
+    +'<p class="small muted" style="margin-top:10px">When you connect, the records currently in this browser are uploaded to your cloud account. Use the same login on another computer to access the same CRM data.</p>'
+    +'</div>'
+    +'<div class="part"><div class="field"><label for="st-cur">Currency</label><select id="st-cur" name="currency">'+CURRENCIES.map(function(c){return '<option value="'+c[0]+'"'+(c[0]===s.currency?' selected':'')+'>'+c[0]+', '+c[1]+'</option>';}).join('')+'</select></div>'
     +'<div class="field"><label for="st-rate">Electricity price per unit (kWh)</label><input id="st-rate" name="rate" type="number" inputmode="decimal" min="0" step="any" value="'+esc(s.powerRate)+'"></div>'
-    +'<p class="small muted" style="margin:-8px 0 0">Tariffs differ by state and by home or commercial connection, so there is no single national price. Homes are commonly around \u20b95 to \u20b98 a unit and commercial connections \u20b98 to \u20b916. For the most accurate number, divide a full month\u2019s bill by the units used.</p>'
+    +'<p class="small muted" style="margin:-8px 0 0">Tariffs differ by state and by home or commercial connection, so there is no single national price. Homes are commonly around \\u20b95 to \\u20b98 a unit and commercial connections \\u20b98 to \\u20b916. For the most accurate number, divide a full month\\u2019s bill by the units used.</p>'
     +'<div class="field"><label for="st-low">Warn when a filament is below (g)</label><input id="st-low" name="low" type="number" inputmode="numeric" min="0" step="any" value="'+esc(s.lowStock)+'"></div>'
     +'<div class="field"><label for="st-sheets">Google Sheets Web App URL <span class="opt">optional</span></label><input id="st-sheets" name="sheets" type="url" placeholder="https://script.google.com/macros/s/.../exec" value="'+esc(s.googleSheetsUrl||'')+'"></div>'
     +(s.lastSheetsSync?'<div class="small muted">Last sync sent: '+esc(new Date(s.lastSheetsSync).toLocaleString())+'</div>':'')+'</div>'
@@ -1106,9 +1283,17 @@ function openSettings(){
     +'</div>'+foot('',false,'Save settings');
   var form=openDrawer('Settings',html);
   form.addEventListener('click',function(e){
-    var b=e.target.closest('[data-export]');if(!b)return;
-    if(b.dataset.export==='csv')offerFile('vforge-3d-sales.csv',salesCsv());
-    else offerFile('vforge-3d-backup.json',JSON.stringify({exportedAt:new Date().toISOString(),filaments:state.filaments,printers:state.printers,products:state.products,customers:state.customers,sales:state.sales,settings:state.settings},null,2));
+    var b=e.target.closest('[data-export]');
+    if(b){
+      if(b.dataset.export==='csv')offerFile('vforge-3d-sales.csv',salesCsv());
+      else offerFile('vforge-3d-backup.json',JSON.stringify({exportedAt:new Date().toISOString(),filaments:state.filaments,printers:state.printers,products:state.products,customers:state.customers,sales:state.sales,settings:state.settings},null,2));
+      return;
+    }
+    var c=e.target.closest('[data-cloud-action]');
+    if(!c)return;
+    if(c.dataset.cloudAction==='disconnect'){disconnectCloud();closeDrawer();}
+    else if(c.dataset.cloudAction==='connect')connectCloudFromForm(form,false);
+    else if(c.dataset.cloudAction==='signup')connectCloudFromForm(form,true);
   });
   wireSubmit(form,function(){
     var low=Math.max(0,num(ctl(form,'low').value));
@@ -1199,16 +1384,36 @@ function onDocs(col,docs){
 function boot(){
   render();
   var claude=window.claude,useFn=claude&&typeof claude.use==='function';
-  var dbP=useFn?Promise.resolve().then(function(){return claude.use('db');}).catch(function(){return null;}):Promise.resolve(null);
   var dlP=useFn?Promise.resolve().then(function(){return claude.use('downloads');}).catch(function(){return null;}):Promise.resolve(null);
-  Promise.all([dbP,dlP]).then(function(r){
-    dlCap=r[1];
-    backend=r[0]?makeDbBackend(r[0]):makeLocalBackend();
+  Promise.resolve().then(function(){
+    var cc=getCloudConfig();
+    if(cc.url&&cc.anonKey&&cc.refreshToken){
+      return cloudRefresh().then(function(){
+        backend=makeSupabaseBackend();
+        if(backend){state.storage='cloud';return true;}
+        throw new Error('Cloud backend could not be initialized.');
+      }).catch(function(){
+        cloudSession=null;
+        backend=makeLocalBackend();
+        state.storage=backend.kind;
+        return false;
+      });
+    }
+    backend=makeLocalBackend();
     state.storage=backend.kind;
+    return false;
+  }).then(function(){
+    return dlP;
+  }).then(function(dl){
+    dlCap=dl;
     renderNotice();
     COLS.forEach(function(c){
       backend.subscribe(c,function(docs){onDocs(c,docs);},function(err){
-        toast(err&&err.code==='revoked'?'Access to this workspace changed. Reload the page.':'Live updates stopped. Reload the page.',true);
+        if(state.storage==='cloud'&&err&&err.status===401){
+          cloudRefresh().catch(function(){toast('Cloud session expired. Reconnect in Settings.',true);});
+        }else{
+          toast(err&&err.code==='revoked'?'Access to this workspace changed. Reload the page.':'Live updates stopped. Check your connection.',true);
+        }
       });
     });
     setTimeout(function(){if(!state.ready){state.ready=true;renderContent();}},6000);
