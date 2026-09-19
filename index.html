@@ -214,6 +214,7 @@ tr.click:hover td{background:color-mix(in srgb,var(--surface) 70%,transparent)}
 <div id="drawer-root"></div>
 <div id="toast" role="status" aria-live="polite"></div>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
 (function(){
 'use strict';
@@ -321,37 +322,46 @@ function cloudFetch(path,opts){
     });
   });
 }
-function cloudAuth(mode,email,password){
+var supabaseClient=null;
+function getSupabaseClient(){
   var c=getCloudConfig();
-  if(!c.url||!c.anonKey) return Promise.reject(new Error('Enter the Supabase Project URL and anon key first.'));
-  var path=mode==='signup'?'/auth/v1/signup':'/auth/v1/token?grant_type=password';
-  return fetch(String(c.url).replace(/\/+$/,'')+path,{
-    method:'POST',
-    headers:{apikey:c.anonKey,'Content-Type':'application/json'},
-    body:JSON.stringify({email:email,password:password})
-  }).then(function(r){return r.text().then(function(t){
-    var data=null;try{data=t?JSON.parse(t):null;}catch(e){data=t;}
-    if(!r.ok){
-      var msg=(data&&data.msg)||(data&&data.message)||(data&&data.error_description)||('HTTP '+r.status);
-      throw new Error(msg);
+  if(!c.url||!c.anonKey) return null;
+  if(!window.supabase||typeof window.supabase.createClient!=='function') return null;
+  if(!supabaseClient){
+    supabaseClient=window.supabase.createClient(c.url,c.anonKey,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:false}});
+  }
+  return supabaseClient;
+}
+function cloudAuth(mode,email,password){
+  var client=getSupabaseClient();
+  if(!client) return Promise.reject(new Error('Supabase client could not load. Refresh the page and try again.'));
+  var action=mode==='signup'
+    ? client.auth.signUp({email:email,password:password})
+    : client.auth.signInWithPassword({email:email,password:password});
+  return action.then(function(result){
+    if(result.error) throw new Error(result.error.message||'Supabase authentication failed');
+    var session=result.data&&result.data.session;
+    var user=result.data&&result.data.user;
+    if(!session && mode==='signup' && user){
+      return {user:user,access_token:null,refresh_token:null};
     }
-    return data;
-  });});
+    if(!session) throw new Error('No login session was returned. Check your email/password and Supabase email settings.');
+    return {user:session.user||user,access_token:session.access_token,refresh_token:session.refresh_token};
+  });
 }
 function cloudRefresh(){
-  var c=getCloudConfig();
-  if(!c.refreshToken||!c.url||!c.anonKey)return Promise.reject(new Error('No saved cloud session.'));
-  return fetch(String(c.url).replace(/\/+$/,'')+'/auth/v1/token?grant_type=refresh_token',{
-    method:'POST',
-    headers:{apikey:c.anonKey,'Content-Type':'application/json'},
-    body:JSON.stringify({refresh_token:c.refreshToken})
-  }).then(function(r){return r.text().then(function(t){
-    var data=null;try{data=t?JSON.parse(t):null;}catch(e){data=t;}
-    if(!r.ok)throw new Error((data&&data.error_description)||(data&&data.msg)||('HTTP '+r.status));
-    cloudSession=data;
-    var cfg=getCloudConfig();cfg.refreshToken=data.refresh_token||cfg.refreshToken;cfg.userId=data.user&&data.user.id||cfg.userId;setCloudConfig(cfg);
-    return data;
-  });});
+  var client=getSupabaseClient();
+  if(client){
+    return client.auth.getSession().then(function(result){
+      if(result.error) throw new Error(result.error.message);
+      var session=result.data&&result.data.session;
+      if(!session) throw new Error('No saved cloud session.');
+      cloudSession={access_token:session.access_token,refresh_token:session.refresh_token,user:session.user};
+      var cfg=getCloudConfig();cfg.refreshToken=session.refresh_token;cfg.userId=session.user&&session.user.id;setCloudConfig(cfg);
+      return cloudSession;
+    });
+  }
+  return Promise.reject(new Error('Supabase client could not load.'));
 }
 function makeSupabaseBackend(){
   var c=getCloudConfig();
