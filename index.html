@@ -280,7 +280,7 @@ function signed(n,dp){return (n<0?'\u2212':'')+money(Math.abs(n),dp);}
  */
 var CLOUD_LOCAL_KEY='vforge3d:cloud';
 // Public Supabase project details. Safe to include in a browser app when RLS is enabled.
-var DEFAULT_CLOUD_URL='https://ogvbazpddpspmxvlypu.supabase.co';
+var DEFAULT_CLOUD_URL='https://ogvbazpddpspmxvylypu.supabase.co';
 var DEFAULT_CLOUD_KEY='sb_publishable_909chAD-mfxaSgrTNYKRXg_XOtgMbr_';
 var cloudSession=null;
 var cloudPollers=[];
@@ -492,6 +492,7 @@ function connectCloudFromForm(form,signup){
   var password=ctl(form,'cloud-password').value;
   if(!url||!key||!email||!password){toast('Enter Supabase URL, anon key, email and password.',true);return;}
   setCloudConfig({url:url,anonKey:key,email:email});
+  supabaseClient=null;
   toast(signup?'Creating cloud account…':'Connecting to cloud…');
   cloudAuth(signup?'signup':'signin',email,password).then(function(data){
     if(signup&&!data.access_token){
