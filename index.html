@@ -332,36 +332,53 @@ function getSupabaseClient(){
   }
   return supabaseClient;
 }
+function authFetch(path,body){
+  var url=cloudUrlBase()+path;
+  var c=getCloudConfig();
+  return fetch(url,{
+    method:'POST',
+    headers:{
+      apikey:String(c.anonKey||''),
+      'Content-Type':'application/json'
+    },
+    body:JSON.stringify(body)
+  }).then(function(r){
+    return r.text().then(function(t){
+      var data=null;try{data=t?JSON.parse(t):null;}catch(e){data=t;}
+      if(!r.ok){
+        var msg=(data&&data.msg)||(data&&data.message)||(data&&data.error_description)||(data&&data.error)||('HTTP '+r.status);
+        var err=new Error(msg);err.status=r.status;err.body=data;throw err;
+      }
+      return data;
+    });
+  }).catch(function(e){
+    if(e&&e.name==='TypeError'&&String(e.message||'').toLowerCase().indexOf('fetch')>=0){
+      throw new Error('Supabase network request failed. The URL is reachable, but the CRM could not complete the browser request. Check that the Project URL and publishable key are copied exactly.');
+    }
+    throw e;
+  });
+}
 function cloudAuth(mode,email,password){
-  var client=getSupabaseClient();
-  if(!client) return Promise.reject(new Error('Supabase client could not load. Refresh the page and try again.'));
-  var action=mode==='signup'
-    ? client.auth.signUp({email:email,password:password})
-    : client.auth.signInWithPassword({email:email,password:password});
-  return action.then(function(result){
-    if(result.error) throw new Error(result.error.message||'Supabase authentication failed');
-    var session=result.data&&result.data.session;
-    var user=result.data&&result.data.user;
+  var path=mode==='signup'?'/auth/v1/signup':'/auth/v1/token?grant_type=password';
+  return authFetch(path,{email:email,password:password}).then(function(data){
+    var session=data&&data.access_token?data:null;
+    var user=(data&&data.user)||null;
     if(!session && mode==='signup' && user){
       return {user:user,access_token:null,refresh_token:null};
     }
-    if(!session) throw new Error('No login session was returned. Check your email/password and Supabase email settings.');
+    if(!session) throw new Error('Supabase returned no login session. Check the email, password, and Auth email settings.');
     return {user:session.user||user,access_token:session.access_token,refresh_token:session.refresh_token};
   });
 }
 function cloudRefresh(){
-  var client=getSupabaseClient();
-  if(client){
-    return client.auth.getSession().then(function(result){
-      if(result.error) throw new Error(result.error.message);
-      var session=result.data&&result.data.session;
-      if(!session) throw new Error('No saved cloud session.');
-      cloudSession={access_token:session.access_token,refresh_token:session.refresh_token,user:session.user};
-      var cfg=getCloudConfig();cfg.refreshToken=session.refresh_token;cfg.userId=session.user&&session.user.id;setCloudConfig(cfg);
-      return cloudSession;
-    });
-  }
-  return Promise.reject(new Error('Supabase client could not load.'));
+  var c=getCloudConfig(),rt=c.refreshToken;
+  if(!rt)return Promise.reject(new Error('No saved cloud session. Please connect again.'));
+  return authFetch('/auth/v1/token?grant_type=refresh_token',{refresh_token:rt}).then(function(data){
+    if(!data||!data.access_token)throw new Error('Supabase did not return a refreshed session.');
+    cloudSession={access_token:data.access_token,refresh_token:data.refresh_token,user:data.user};
+    var cfg=getCloudConfig();cfg.refreshToken=data.refresh_token;cfg.userId=data.user&&data.user.id;setCloudConfig(cfg);
+    return cloudSession;
+  });
 }
 function makeSupabaseBackend(){
   var c=getCloudConfig();
@@ -490,7 +507,7 @@ function connectCloudFromForm(form,signup){
   var key=ctl(form,'cloud-key').value.trim();
   var email=ctl(form,'cloud-email').value.trim();
   var password=ctl(form,'cloud-password').value;
-  if(!url||!key||!email||!password){toast('Enter Supabase URL, anon key, email and password.',true);return;}
+  if(!url||!key||!email||!password){toast('Enter Supabase Project URL, publishable key, email and password.',true);return;}
   setCloudConfig({url:url,anonKey:key,email:email});
   supabaseClient=null;
   toast(signup?'Creating cloud account…':'Connecting to cloud…');
