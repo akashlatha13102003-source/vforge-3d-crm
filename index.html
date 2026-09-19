@@ -1,0 +1,1221 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>vforge 3d CRM</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+  color-scheme:light dark;
+  --bg:#EDF2F1; --surface:#FFFFFF; --sunk:#E1E9E7; --ink:#12262E; --ink-2:#4A5F66; --line:#D2DCDA;
+  --accent:#00786F; --accent-hover:#005F58; --on-accent:#FFFFFF; --accent-wash:#DCF1EE;
+  --warn:#B93A24; --warn-wash:#FBE8E3; --amber:#8A5A00; --amber-wash:#FFF0C7; --focus:#2450E0;
+  --scrim:rgba(10,20,22,.45);
+  --display:"Bricolage Grotesque","Trebuchet MS",system-ui,sans-serif;
+  --text:"Instrument Sans",system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#0D1618; --surface:#142022; --sunk:#1C2B2E; --ink:#E4EEF0; --ink-2:#9FB3B9; --line:#27393D;
+    --accent:#43D2C5; --accent-hover:#7BE3D9; --on-accent:#04201D; --accent-wash:#12332F;
+    --warn:#FF8A72; --warn-wash:#3A1B15; --amber:#F2C14E; --amber-wash:#3A2E0E; --focus:#8AA5FF;
+    --scrim:rgba(0,0,0,.6);
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0D1618; --surface:#142022; --sunk:#1C2B2E; --ink:#E4EEF0; --ink-2:#9FB3B9; --line:#27393D;
+  --accent:#43D2C5; --accent-hover:#7BE3D9; --on-accent:#04201D; --accent-wash:#12332F;
+  --warn:#FF8A72; --warn-wash:#3A1B15; --amber:#F2C14E; --amber-wash:#3A2E0E; --focus:#8AA5FF;
+  --scrim:rgba(0,0,0,.6);
+}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*,*::before,*::after{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:400 15px/1.5 var(--text);-webkit-font-smoothing:antialiased;font-variant-numeric:tabular-nums}
+[hidden]{display:none!important}
+h1,h2,h3{font-family:var(--display);margin:0;letter-spacing:-.015em}
+button{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.muted{color:var(--ink-2)}
+.small{font-size:13px}
+.neg{color:var(--warn)}
+
+/* shell */
+.app{display:grid;grid-template-columns:228px minmax(0,1fr);min-height:100vh}
+.rail{position:sticky;top:env(safe-area-inset-top,0px);align-self:start;height:100vh;padding:26px 14px;display:flex;flex-direction:column;gap:30px;border-right:1px solid var(--line)}
+.brand,.mbrand{display:flex;align-items:center;gap:10px;font:700 21px/1 var(--display);letter-spacing:-.02em;padding:0 8px}
+.brand svg,.mbrand svg{fill:var(--accent);flex:none}
+.mbrand{display:none;padding:0;margin-bottom:14px}
+#nav{display:flex;flex-direction:column;gap:2px}
+#nav button{display:flex;align-items:center;gap:11px;padding:10px 12px;border:0;border-radius:10px;background:transparent;color:var(--ink-2);font-weight:500;cursor:pointer;text-align:left}
+#nav button:hover{color:var(--ink);background:var(--sunk)}
+#nav button[aria-current="page"]{background:var(--surface);color:var(--ink);font-weight:600;box-shadow:inset 3px 0 0 var(--accent)}
+#nav svg{width:20px;height:20px;flex:none;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+#nav .step{margin-left:auto;font:600 11px/1 var(--display);border:1px solid var(--line);border-radius:999px;padding:3px 7px;color:var(--ink-2)}
+.main{padding:30px clamp(16px,4vw,48px) 72px;max-width:1140px;width:100%}
+.bar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px 18px;margin-bottom:24px}
+.bar h1{font-size:32px;font-weight:700}
+.bar-right{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+#notice .note{background:var(--amber-wash);color:var(--amber);padding:10px 14px;border-radius:10px;margin-bottom:18px;font-size:14px}
+
+/* controls */
+.btn{border:1px solid var(--line);background:var(--surface);color:var(--ink);padding:10px 18px;border-radius:999px;font-weight:600;font-size:14px;line-height:1.2;cursor:pointer;min-height:40px}
+.btn:hover{border-color:var(--ink-2)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.btn.primary:hover{background:var(--accent-hover);border-color:var(--accent-hover)}
+.btn.danger{color:var(--warn);border-color:var(--warn);background:transparent}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;vertical-align:-3px;margin-right:7px}
+.btn.busy svg{animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.spool-prods{margin-top:2px}
+.iconbtn{display:inline-grid;place-items:center;width:38px;height:38px;border:0;border-radius:50%;background:transparent;cursor:pointer;color:var(--ink-2)}
+.iconbtn:hover{background:var(--sunk);color:var(--ink)}
+.iconbtn svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round}
+.linkish{background:none;border:0;padding:0;font-weight:600;color:var(--ink);text-align:left;cursor:pointer}
+.linkish:hover{color:var(--accent);text-decoration:underline}
+.seg{display:inline-flex;background:var(--sunk);border-radius:999px;padding:3px}
+.seg button{border:0;background:transparent;padding:7px 14px;border-radius:999px;font-weight:600;font-size:13.5px;color:var(--ink-2);cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--surface);color:var(--ink)}
+.search input{width:min(260px,60vw);border-radius:999px;padding-inline:16px}
+input,select,textarea{font:inherit;font-size:15px;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:10px 12px;min-height:42px;width:100%}
+input[type=color]{padding:3px;height:42px;cursor:pointer}
+textarea{min-height:84px;resize:vertical}
+input::placeholder,textarea::placeholder{color:var(--ink-2);opacity:.7}
+.field{display:flex;flex-direction:column;gap:6px;min-width:0}
+.field>label,.lab{font-weight:600;font-size:13.5px}
+.opt{font-weight:400;color:var(--ink-2)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.stack{display:flex;flex-direction:column;gap:14px}
+.tag{display:inline-block;padding:2px 9px;border-radius:999px;font-size:12.5px;font-weight:600;white-space:nowrap}
+.tag.paid{background:var(--accent-wash);color:var(--accent)}
+.tag.pending{background:var(--amber-wash);color:var(--amber)}
+.tag.low{background:var(--warn-wash);color:var(--warn)}
+.dot{display:inline-block;width:12px;height:12px;border-radius:50%;border:1px solid rgba(128,128,128,.55);vertical-align:-1px;margin-right:7px;flex:none}
+.dots{display:inline-flex;gap:4px}
+.dots .dot{margin:0}
+
+/* content */
+.sec{margin-top:38px}
+.sec:first-child{margin-top:0}
+.sec-head{display:flex;justify-content:space-between;align-items:baseline;gap:12px;margin-bottom:10px}
+.sec h2{font-size:20px;font-weight:600}
+.figures+.cols{margin-top:34px}
+.cols{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:8px 48px;align-items:start}
+.figures{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));margin:0 0 6px;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.fig{padding:18px 18px 18px 0;display:flex;flex-direction:column;gap:2px}
+.fig+.fig{padding-left:20px;border-left:1px solid var(--line)}
+.fig-l{color:var(--ink-2);font-size:14px}
+.fig-v{font:700 28px/1.15 var(--display);letter-spacing:-.02em}
+.fig-s{color:var(--ink-2);font-size:13.5px}
+table{width:100%;border-collapse:collapse}
+th{text-align:left;font-weight:600;font-size:13.5px;color:var(--ink-2);padding:8px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:13px 10px;border-bottom:1px solid var(--line);vertical-align:middle}
+th:first-child,td:first-child{padding-left:0}
+th:last-child,td:last-child{padding-right:0}
+.num{text-align:right;white-space:nowrap}
+tr.click{cursor:pointer}
+tr.click:hover td{background:color-mix(in srgb,var(--surface) 70%,transparent)}
+.only-sm{display:none}
+.list{list-style:none;margin:0;padding:0}
+.row{display:flex;justify-content:space-between;gap:14px;padding:12px 0;border-bottom:1px solid var(--line)}
+.row>div:first-child{display:flex;flex-direction:column;min-width:0}
+.row-r{text-align:right;display:flex;flex-direction:column;flex:none}
+
+/* spools: the layer-line bars */
+.spool{padding:15px 0;border-bottom:1px solid var(--line)}
+.spool-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.spool-head strong{font:600 17px/1.2 var(--display);letter-spacing:-.01em}
+.spool-left{margin-left:auto;font-weight:600}
+.bar-track{height:18px;border-radius:6px;background:var(--sunk);overflow:hidden;margin:10px 0 7px}
+.bar-track>i{display:block;height:100%;border-radius:6px 0 0 6px;background-image:repeating-linear-gradient(0deg,rgba(0,0,0,.2) 0,rgba(0,0,0,.2) 1px,rgba(255,255,255,.14) 1px,rgba(255,255,255,.14) 3px);box-shadow:inset 0 0 0 1px rgba(0,0,0,.16)}
+.empty{padding:56px 0;max-width:460px}
+.empty h2{font-size:22px;margin-bottom:6px}
+.empty p{margin:0 0 18px}
+.start-list{list-style:none;margin:14px 0 0;padding:0;counter-reset:s}
+.start-list li{counter-increment:s;display:grid;grid-template-columns:34px minmax(0,1fr) auto;gap:14px;align-items:center;padding:16px 0;border-bottom:1px solid var(--line)}
+.start-list li::before{content:counter(s);display:grid;place-items:center;width:30px;height:30px;border-radius:50%;border:1.5px solid var(--line);font:700 14px var(--display)}
+.start-list li.done::before{content:"\2713";background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.start-list p{margin:0}
+.start-list strong{font:600 17px var(--display)}
+
+/* drawer */
+.scrim{position:fixed;inset:0;background:var(--scrim);z-index:40}
+.drawer{position:fixed;top:0;right:0;bottom:0;width:min(540px,100%);background:var(--surface);z-index:41;display:flex;flex-direction:column;box-shadow:-14px 0 44px rgba(0,0,0,.2);animation:slide .22s ease-out}
+@keyframes slide{from{transform:translateX(28px);opacity:0}to{transform:none;opacity:1}}
+.drawer>header{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:calc(16px + env(safe-area-inset-top,0px)) 14px 14px 24px;border-bottom:1px solid var(--line)}
+.drawer h2{font-size:21px;font-weight:700}
+.dform{display:flex;flex-direction:column;flex:1;min-height:0}
+.dbody{flex:1;overflow:auto;padding:22px 24px;display:flex;flex-direction:column;gap:20px}
+.dfoot{padding:14px 24px calc(14px + env(safe-area-inset-bottom,0px));border-top:1px solid var(--line);display:flex;flex-direction:column;gap:12px;background:var(--surface)}
+.dfoot-btns{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.dfoot-r{display:flex;gap:10px}
+.live{display:flex;flex-wrap:wrap;gap:4px 20px;font-size:14px}
+.live strong{font-weight:600}
+.err{color:var(--warn);font-size:13.5px;min-height:0}
+.err:empty{display:none}
+.part{display:flex;flex-direction:column;gap:14px}
+.part+.part{border-top:1px solid var(--line);padding-top:20px}
+.part h3{font-size:17px;font-weight:600}
+.part .hint{margin:-8px 0 0;color:var(--ink-2);font-size:13.5px}
+.line{display:grid;grid-template-columns:minmax(0,1fr) 112px 38px;gap:8px;align-items:center}
+.warn-box{background:var(--warn-wash);color:var(--warn);padding:10px 12px;border-radius:8px;font-size:13.5px}
+.info-box{background:var(--sunk);padding:10px 12px;border-radius:8px;font-size:13.5px}
+#toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(90px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:10px 18px;border-radius:999px;font-weight:600;font-size:14px;z-index:60;max-width:90vw;opacity:0;pointer-events:none;transition:opacity .18s}
+#toast.show{opacity:1}
+#toast.bad{background:var(--warn);color:#fff}
+
+@media (max-width:860px){
+  .app{display:block}
+  .rail{position:fixed;left:0;right:0;bottom:0;top:auto;height:auto;flex-direction:row;padding:6px 8px calc(6px + env(safe-area-inset-bottom,0px));border-right:0;border-top:1px solid var(--line);background:var(--bg);z-index:30;gap:0}
+  .brand{display:none}
+  .mbrand{display:flex}
+  #nav{flex-direction:row;width:100%;gap:2px}
+  #nav button{flex:1;flex-direction:column;gap:3px;padding:8px 1px;font-size:11px;justify-content:center;text-align:center;min-width:0}
+  #nav .step{display:none}
+  .main{padding:18px 16px 100px}
+  .bar h1{font-size:28px}
+  .cols{grid-template-columns:1fr}
+  .figures{grid-template-columns:1fr 1fr}
+  .fig:nth-child(3){padding-left:0;border-left:0}
+  .fig:nth-child(n+3){border-top:1px solid var(--line)}
+  .hide-sm{display:none}
+  .only-sm{display:block}
+  input,select,textarea{font-size:16px}
+  #toast{bottom:calc(96px + env(safe-area-inset-bottom,0px))}
+}
+@media (max-width:480px){
+  .grid2{grid-template-columns:1fr}
+  .grid2.keep{grid-template-columns:1fr 1fr}
+  .fig-v{font-size:24px}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="rail">
+    <div class="brand"><svg viewBox="0 0 28 28" width="26" height="26" aria-hidden="true"><rect x="9" y="4" width="10" height="4" rx="1.5"/><rect x="6" y="10" width="16" height="4" rx="1.5"/><rect x="3" y="16" width="22" height="4" rx="1.5"/><rect x="3" y="22" width="22" height="3" rx="1.5" opacity=".45"/></svg><span>vforge 3d</span></div>
+    <nav id="nav" aria-label="Sections"></nav>
+  </aside>
+  <main class="main">
+    <div class="mbrand"><svg viewBox="0 0 28 28" width="24" height="24" aria-hidden="true"><rect x="9" y="4" width="10" height="4" rx="1.5"/><rect x="6" y="10" width="16" height="4" rx="1.5"/><rect x="3" y="16" width="22" height="4" rx="1.5"/><rect x="3" y="22" width="22" height="3" rx="1.5" opacity=".45"/></svg><span>vforge 3d</span></div>
+    <div id="notice"></div>
+    <div class="bar" id="toolbar"></div>
+    <div id="content"></div>
+  </main>
+</div>
+<div id="drawer-root"></div>
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script>
+(function(){
+'use strict';
+
+/* ---------- helpers ---------- */
+var COLS=['filaments','printers','products','customers','sales','settings'];
+function $(s,r){return (r||document).querySelector(s);}
+function $$(s,r){return Array.prototype.slice.call((r||document).querySelectorAll(s));}
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+function num(v){var n=parseFloat(v);return isFinite(n)?n:0;}
+function pad(n){return String(n).padStart(2,'0');}
+function ymd(d){return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());}
+function today(){return ymd(new Date());}
+function sum(a,f){return a.reduce(function(t,x){return t+f(x);},0);}
+function uniq(a){var seen={},out=[];a.forEach(function(x){var k=String(x||'').trim();if(!k)return;var l=k.toLowerCase();if(!seen[l]){seen[l]=1;out.push(k);}});return out;}
+function safeHex(h){return /^#[0-9a-f]{6}$/i.test(h||'')?h:'#8a8f94';}
+function byName(a,b){return String(a.name||'').localeCompare(String(b.name||''));}
+function fname(o){return [o.brand,o.material,o.colour].filter(Boolean).join(' ');}
+function fkey(o){return [o.brand,o.material,o.colour].map(function(s){return String(s||'').trim().toLowerCase();}).join('|');}
+var CURRENCIES=[['INR','Indian rupee'],['USD','US dollar'],['EUR','Euro'],['GBP','British pound'],['AED','UAE dirham'],['SGD','Singapore dollar'],['AUD','Australian dollar'],['CAD','Canadian dollar']];
+var COLOURS={black:'#1d1f21',white:'#f4f4f2',grey:'#8a8f94',gray:'#8a8f94',silver:'#b8bcc2',red:'#d0312d',orange:'#f08a1c',yellow:'#f2c318',green:'#2e9e5b',blue:'#2b5fd9',purple:'#7a3fc4',pink:'#ec6fa5',brown:'#7a4b2a',gold:'#c9a227',teal:'#1a9c93',cyan:'#20b7d8',beige:'#d8c7a3',transparent:'#cfe3ea',clear:'#cfe3ea'};
+function guessHex(name){var w=String(name).toLowerCase().split(/[^a-z]+/);for(var i=0;i<w.length;i++){if(COLOURS[w[i]])return COLOURS[w[i]];}return null;}
+
+var ICONS={
+  overview:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V11M10 20V4M16 20v-6M21 20H3"/></svg>',
+  filament:'<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/><path d="M12 3v4M12 17v4M3 12h4M17 12h4"/></svg>',
+  products:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/></svg>',
+  sales:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h14v18l-3.5-2-3.5 2-3.5-2L5 21z"/><path d="M9 8h6M9 12h6"/></svg>',
+  customers:'<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-7 8-7s8 3 8 7"/></svg>',
+  refresh:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.6-5.9"/><path d="M20 4v5h-5"/></svg>',
+  printers:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16M6 4v16M18 4v16M3 20h18"/><path d="M9.5 8h5v3h-5zM12 11v3"/></svg>',
+  x:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>'
+};
+
+/* ---------- state ---------- */
+var DEFAULT_RATE=8;
+var state={filaments:[],printers:[],products:[],customers:[],sales:[],settings:{currency:'INR',lowStock:200,powerRate:DEFAULT_RATE},
+  loaded:{},ready:false,view:'overview',period:'30',q:'',storage:'workspace'};
+var ver=0,statsVer=-1,statsCache=null,backend=null,dlCap=null;
+
+/* ---------- formatting ---------- */
+function loc(){return (state.settings.currency||'INR')==='INR'?'en-IN':'en-US';}
+function money(n,dp){
+  n=num(n);var cur=state.settings.currency||'INR';
+  var d=dp!=null?dp:(Math.abs(n-Math.round(n))<0.005?0:2);
+  try{return new Intl.NumberFormat(loc(),{style:'currency',currency:cur,minimumFractionDigits:d,maximumFractionDigits:d}).format(n);}
+  catch(e){return cur+' '+n.toFixed(d);}
+}
+function fmtG(n){return (Math.round(num(n)*10)/10).toLocaleString(loc())+' g';}
+function pct(n){return Math.round(n)+'%';}
+function fmtDate(s){
+  if(!s)return '';var p=String(s).split('-').map(Number);if(!p[0])return s;
+  return new Date(p[0],p[1]-1,p[2]).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'});
+}
+function signed(n,dp){return (n<0?'\u2212':'')+money(Math.abs(n),dp);}
+
+/* ---------- storage backends ---------- */
+function makeDbBackend(db){
+  return {
+    kind:'workspace',
+    subscribe:function(col,cb,onErr){
+      return db.collection(col).onSnapshot(function(snap){
+        cb(snap.docs.map(function(d){return Object.assign({id:d.id},d.data());}));
+      },onErr);
+    },
+    fetch:function(col){return db.collection(col).get().then(function(snap){return snap.docs.map(function(d){return Object.assign({id:d.id},d.data());});});},
+    save:function(col,id,data){return db.collection(col).doc(id).set(data);},
+    remove:function(col,id){return db.collection(col).doc(id).delete();},
+    newId:function(col){return db.collection(col).doc().id;}
+  };
+}
+function makeLocalBackend(){
+  var mem={},subs={},persistent=true;
+  try{localStorage.setItem('vforge3d:t','1');localStorage.removeItem('vforge3d:t');}catch(e){persistent=false;}
+  function key(c){return 'vforge3d:'+c;}
+  function load(c){try{return JSON.parse(localStorage.getItem(key(c))||'[]');}catch(e){return [];}}
+  function persist(c){try{localStorage.setItem(key(c),JSON.stringify(mem[c]));}catch(e){}}
+  function notify(c){(subs[c]||[]).forEach(function(cb){cb(mem[c].slice());});}
+  COLS.forEach(function(c){mem[c]=persistent?load(c):[];});
+  return {
+    kind:persistent?'device':'memory',
+    fetch:function(col){if(persistent)mem[col]=load(col);return Promise.resolve(mem[col].slice());},
+    subscribe:function(col,cb){(subs[col]=subs[col]||[]).push(cb);cb(mem[col].slice());return function(){};},
+    save:function(col,id,data){
+      var rec=Object.assign({id:id},data),i=mem[col].findIndex(function(x){return x.id===id;});
+      if(i>=0)mem[col][i]=rec;else mem[col].push(rec);
+      persist(col);notify(col);return Promise.resolve();
+    },
+    remove:function(col,id){mem[col]=mem[col].filter(function(x){return x.id!==id;});persist(col);notify(col);return Promise.resolve();},
+    newId:function(){return Date.now().toString(36)+Math.random().toString(36).slice(2,8);}
+  };
+}
+function errMsg(e){
+  var c=e&&e.code;
+  if(c==='quota_exceeded')return 'Storage is full. Delete some old records and try again.';
+  if(c==='invalid_argument')return 'You can view this workspace but not change it.';
+  if(c==='revoked')return 'Access to this workspace changed. Reload the page.';
+  return (e&&e.message)||'Could not save. Try again.';
+}
+var autoSheetsTimer=null,autoSheetsBusy=false,autoSheetsQueued=false;
+function queueAutoSheetsSync(reason){
+  var url=(state.settings.googleSheetsUrl||'').trim();
+  if(!url||!state.ready)return;
+  clearTimeout(autoSheetsTimer);
+  autoSheetsTimer=setTimeout(function(){
+    if(autoSheetsBusy){autoSheetsQueued=true;return;}
+    autoSheetsBusy=true;
+    syncGoogleSheets(true).then(function(){
+      autoSheetsBusy=false;
+      if(autoSheetsQueued){autoSheetsQueued=false;queueAutoSheetsSync('queued');}
+    },function(){autoSheetsBusy=false;});
+  },900);
+}
+function syncStateAfterSave(col){
+  // Force a fresh read before Google Sheets sync. This guarantees the
+  // payload contains the record that was just saved, even if the live
+  // listener has not delivered its snapshot yet.
+  return Promise.resolve().then(function(){return backend.fetch(col);}).then(function(docs){
+    onDocs(col,docs);
+    return true;
+  });
+}
+function save(col,id,data){
+  return Promise.resolve().then(function(){return backend.save(col,id,data);}).then(function(){
+    if(['filaments','products','sales','customers'].indexOf(col)>=0)return syncStateAfterSave(col);
+    return true;
+  },function(e){toast(errMsg(e),true);return false;});
+}
+function remove(col,id){
+  return Promise.resolve().then(function(){return backend.remove(col,id);}).then(function(){
+    if(['filaments','products','sales','customers'].indexOf(col)>=0)return syncStateAfterSave(col);
+    return true;
+  },function(e){toast(errMsg(e),true);return false;});
+}
+
+/* ---------- derived numbers ---------- */
+function getStats(){
+  if(statsCache&&statsVer===ver)return statsCache;
+  var map=new Map();
+  state.filaments.forEach(function(p){
+    var key=p.key||fkey(p),e=map.get(key),stamp=(p.date||'')+'|'+(p.createdAt||'');
+    if(!e){e={key:key,brand:p.brand,material:p.material,colour:p.colour,hex:safeHex(p.hex),bought:0,paid:0,used:0,recipeUsed:0,productionUsed:0,saleExtraUsed:0,first:stamp,last:stamp,prods:[]};map.set(key,e);}
+    e.bought+=num(p.weight)*num(p.spools);e.paid+=num(p.total);
+    if(stamp<e.first){e.first=stamp;e.brand=p.brand;e.material=p.material;e.colour=p.colour;}
+    if(stamp>=e.last){e.last=stamp;e.hex=safeHex(p.hex);}
+  });
+
+  // A product is a recipe, not stock consumption by itself. "Quantity made"
+  // records how many physical pieces were actually produced, so the recipe
+  // grams are deducted from filament inventory exactly once for those pieces.
+  state.products.forEach(function(pr){
+    var qty=Math.max(0,num(pr.quantityMade));
+    if(qty>0)(pr.lines||[]).forEach(function(l){
+      var e=map.get(l.key);if(e)e.productionUsed+=num(l.grams)*qty;
+    });
+  });
+
+  // If more pieces are sold than were recorded as made, consume the extra
+  // pieces from filament using the current product recipe. Legacy sales that
+  // have no production quantity continue to use their saved usage snapshot.
+  var soldByProduct=new Map();
+  state.sales.forEach(function(s){
+    var pid=s.productId;
+    soldByProduct.set(pid,(soldByProduct.get(pid)||0)+Math.max(0,num(s.qty)));
+  });
+  state.sales.forEach(function(s){
+    var soldProduct=state.products.find(function(pr){return pr.id===s.productId;});
+    if(!soldProduct){
+      (s.usage||[]).forEach(function(u){var e=map.get(u.key);if(e)e.used+=num(u.grams)*num(s.qty);});
+      return;
+    }
+    var madeQty=Math.max(0,num(soldProduct.quantityMade));
+    if(madeQty<=0){
+      (s.usage||[]).forEach(function(u){var e=map.get(u.key);if(e)e.used+=num(u.grams)*num(s.qty);});
+    }
+  });
+  state.products.forEach(function(pr){
+    var madeQty=Math.max(0,num(pr.quantityMade));
+    var soldQty=soldByProduct.get(pr.id)||0;
+    var extraQty=Math.max(0,soldQty-madeQty);
+    if(extraQty>0)(pr.lines||[]).forEach(function(l){
+      var e=map.get(l.key);if(e)e.saleExtraUsed+=num(l.grams)*extraQty;
+    });
+  });
+
+  state.products.forEach(function(pr){
+    (pr.lines||[]).forEach(function(l){
+      var e=map.get(l.key);if(!e)return;
+      e.recipeUsed+=num(l.grams);
+      var x=e.prods.find(function(q){return q.id===pr.id;});
+      if(x)x.grams+=num(l.grams);else e.prods.push({id:pr.id,name:pr.name||'Untitled',grams:num(l.grams)});
+    });
+  });
+  map.forEach(function(e){e.actualUsed=e.productionUsed+e.used+e.saleExtraUsed;e.left=e.bought-e.actualUsed;e.cpg=e.bought>0?e.paid/e.bought:0;e.name=fname(e);});
+  statsCache=map;statsVer=ver;return map;
+}
+function powerOf(printerId,hours){
+  var pr=state.printers.find(function(x){return x.id===printerId;});
+  var kwh=(pr?num(pr.watts)/1000:0)*num(hours);
+  return {printer:pr,kwh:kwh,cost:kwh*num(state.settings.powerRate)};
+}
+function productCost(prod,S){
+  var fil=0,grams=0;
+  (prod.lines||[]).forEach(function(l){var e=S.get(l.key);fil+=num(l.grams)*(e?e.cpg:0);grams+=num(l.grams);});
+  var pw=powerOf(prod.printerId,prod.printHours),other=num(prod.otherCost);
+  return {fil:fil,elec:pw.cost,kwh:pw.kwh,other:other,total:fil+pw.cost+other,grams:grams};
+}
+function fmtHours(h){
+  h=num(h);if(h<=0)return '';
+  var t=Math.round(h*60),hh=Math.floor(t/60),mm=t%60;
+  return (hh?hh+' h':'')+(hh&&mm?' ':'')+(mm?mm+' min':'');
+}
+function saleRev(s){return num(s.unitPrice)*num(s.qty);}
+function saleCost(s){return num(s.unitCost)*num(s.qty);}
+function custName(s){var c=state.customers.find(function(x){return x.id===s.customerId;});return (c&&c.name)||s.customerName||'Unknown customer';}
+function prodName(s){var p=state.products.find(function(x){return x.id===s.productId;});return (p&&p.name)||s.productName||'Deleted product';}
+function periodSales(){
+  if(state.period==='all')return state.sales;
+  var c=new Date();c.setDate(c.getDate()-30);var cut=ymd(c);
+  return state.sales.filter(function(s){return (s.date||'')>=cut;});
+}
+function sortedSales(list){
+  return list.slice().sort(function(a,b){return (b.date||'').localeCompare(a.date||'')||(b.createdAt||'').localeCompare(a.createdAt||'');});
+}
+
+/* ---------- toast ---------- */
+var toastTimer;
+function toast(msg,bad){
+  var t=$('#toast');t.textContent=msg;t.className='show'+(bad?' bad':'');
+  clearTimeout(toastTimer);toastTimer=setTimeout(function(){t.className='';},3800);
+}
+
+/* ---------- rendering: shell ---------- */
+var NAV=[['overview','Overview','overview',''],['printers','Printers','printers',''],['filament','Filament','filament','1'],['products','Products','products','2'],['sales','Sales','sales','3'],['customers','Customers','customers',''],['reports','Reports','overview','']];
+function renderNav(){
+  $('#nav').innerHTML=NAV.map(function(n){
+    return '<button data-view="'+n[0]+'"'+(state.view===n[0]?' aria-current="page"':'')+'>'+ICONS[n[2]]+'<span>'+n[1]+'</span>'+(n[3]?'<span class="step" aria-hidden="true">'+n[3]+'</span>':'')+'</button>';
+  }).join('');
+}
+function renderNotice(){
+  var n=$('#notice');
+  if(state.storage==='device')n.innerHTML='<div class="note">Working offline: entries are saved in this browser only.</div>';
+  else if(state.storage==='memory')n.innerHTML='<div class="note">Storage is blocked here, so entries will be lost when you close this page.</div>';
+  else n.innerHTML='';
+}
+function searchBox(ph){return '<label class="search"><span class="sr">Search</span><input id="q" type="search" placeholder="'+esc(ph)+'" value="'+esc(state.q)+'" autocomplete="off"></label>';}
+function renderToolbar(){
+  var v=state.view,T={overview:'Overview',printers:'Printers',filament:'Filament',products:'Products',sales:'Sales',customers:'Customers',reports:'Reports'},right='';
+  if(v==='overview')right='<div class="seg" role="group" aria-label="Period"><button data-act="period:30" aria-pressed="'+(state.period==='30')+'">Last 30 days</button><button data-act="period:all" aria-pressed="'+(state.period==='all')+'">All time</button></div><button class="btn" data-act="settings">Settings</button>';
+  if(v==='printers')right='<button class="btn" data-act="settings">Electricity price</button><button class="btn primary" data-act="new-printer">Add printer</button>';
+  if(v==='filament')right='<button class="btn primary" data-act="new-purchase">Log purchase</button>';
+  if(v==='products')right=searchBox('Search products')+'<button class="btn primary" data-act="new-product">New product</button>';
+  if(v==='sales')right=searchBox('Search sales')+'<button class="btn primary" data-act="new-sale">Record sale</button>';
+  if(v==='customers')right=searchBox('Search customers')+'<button class="btn primary" data-act="new-customer">Add customer</button>';
+  if(v==='reports')right='<button class="btn" data-act="test-sheets">Test Google Sheets</button><button class="btn primary" data-act="sync-sheets">Sync to Google Sheets</button><button class="btn" data-act="export-report-csv">Export reports CSV</button>';
+  var refresh='<span class="small muted hide-sm" id="stamp"></span><button class="btn" id="refresh-btn" data-act="refresh" title="Load the latest data">'+ICONS.refresh+'<span>Refresh</span></button>';
+  $('#toolbar').innerHTML='<h1>'+T[v]+'</h1><div class="bar-right">'+refresh+right+'</div>';
+  setStamp();
+}
+function renderContent(){
+  var c=$('#content');
+  if(!state.ready){c.innerHTML='<p class="muted">Loading your workspace\u2026</p>';return;}
+  var fn={overview:vOverview,printers:vPrinters,filament:vFilament,products:vProducts,sales:vSales,customers:vCustomers,reports:vReports}[state.view];
+  c.innerHTML=fn();
+}
+function render(){renderNav();renderNotice();renderToolbar();renderContent();}
+function go(view){state.view=view;state.q='';render();window.scrollTo(0,0);}
+
+/* ---------- views ---------- */
+function empty(title,text,act,label){
+  return '<div class="empty"><h2>'+esc(title)+'</h2><p class="muted">'+esc(text)+'</p>'+(act?'<button class="btn primary" data-act="'+act+'">'+esc(label)+'</button>':'')+'</div>';
+}
+function spoolRow(e,low){
+  var pc=e.bought>0?Math.max(0,Math.min(100,e.left/e.bought*100)):0;
+  var status=e.left<=0?'<span class="tag low">Out of stock</span>':(e.left<=low?'<span class="tag low">Running low</span>':'');
+  var left=e.left<0?'Over by '+fmtG(-e.left):fmtG(e.left)+' left';
+  return '<div class="spool"><div class="spool-head"><span class="dot" style="background:'+safeHex(e.hex)+'"></span><strong>'+esc(e.name)+'</strong>'+status+'<span class="spool-left">'+left+'</span></div>'
+    +'<div class="bar-track" role="img" aria-label="'+esc(e.name)+': '+Math.round(pc)+' percent left"><i style="width:'+pc.toFixed(1)+'%;background-color:'+safeHex(e.hex)+'"></i></div>'
+    +'<div class="small muted">'+fmtG(e.bought)+' bought, '+fmtG(e.productionUsed)+' used for products made, '+fmtG(e.used)+' used in unproduced sales, '+fmtG(e.recipeUsed)+' configured per product piece, '+money(e.cpg,2)+' per gram</div>'
+    +'<div class="small muted spool-prods">'+(e.prods&&e.prods.length?'Products using it: '+e.prods.slice().sort(byName).slice(0,4).map(function(x){return esc(x.name)+' '+fmtG(x.grams)+' each';}).join(', ')+(e.prods.length>4?' and '+(e.prods.length-4)+' more':''):'Not used in any product yet')+'</div></div>';
+}
+function vStart(){
+  var f=state.filaments.length>0,p=state.products.length>0,s=state.sales.length>0;
+  function li(done,title,text,act,label,enabled){
+    return '<li class="'+(done?'done':'')+'"><div><strong>'+esc(title)+'</strong><p class="muted">'+esc(text)+'</p></div>'
+      +(done?'<span class="tag paid">Done</span>':'<button class="btn'+(enabled?' primary':'')+'" data-act="'+act+'"'+(enabled?'':' disabled')+'>'+esc(label)+'</button>')+'</li>';
+  }
+  return '<section class="sec"><h2>Start with three entries</h2><ol class="start-list">'
+    +li(f,'Log a filament purchase','Spool weight and what you paid give the cost per gram.','new-purchase','Log purchase',true)
+    +li(p,'Add a product','Grams of filament used, product details and your listed price.','new-product','Add product',f)
+    +li(s,'Record a sale','The selling price and the customer\u2019s details.','new-sale','Record sale',p)
+    +'</ol>'+(state.printers.length?'':'<p class="small muted" style="margin-top:16px">Optional: <button class="linkish" data-view="printers">add your printers</button> so electricity is included in each product\u2019s cost.</p>')+'</section>';
+}
+function vOverview(){
+  var S=getStats(),low=num(state.settings.lowStock);
+  var rows=Array.from(S.values()).sort(function(a,b){return (a.bought?a.left/a.bought:0)-(b.bought?b.left/b.bought:0);});
+  var stock=rows.length?'<section class="sec"><div class="sec-head"><h2>Filament on hand</h2><button class="linkish" data-view="filament">Open filament</button></div>'+rows.slice(0,6).map(function(e){return spoolRow(e,low);}).join('')+'</section>':'';
+  if(!state.sales.length)return vStart()+stock;
+  var list=periodSales(),rev=sum(list,saleRev),cost=sum(list,saleCost),profit=rev-cost;
+  var pend=sum(list.filter(function(s){return s.status==='pending';}),saleRev);
+  var pendN=list.filter(function(s){return s.status==='pending';}).length;
+  var figs='<div class="figures">'
+    +'<div class="fig"><span class="fig-l">Sales</span><strong class="fig-v">'+money(rev)+'</strong><span class="fig-s">'+list.length+(list.length===1?' order':' orders')+'</span></div>'
+    +'<div class="fig"><span class="fig-l">Cost of making</span><strong class="fig-v">'+money(cost)+'</strong><span class="fig-s">filament, power and extras</span></div>'
+    +'<div class="fig"><span class="fig-l">Profit</span><strong class="fig-v'+(profit<0?' neg':'')+'">'+signed(profit)+'</strong><span class="fig-s">'+(rev>0?pct(profit/rev*100)+' margin':'no sales yet')+'</span></div>'
+    +'<div class="fig"><span class="fig-l">Awaiting payment</span><strong class="fig-v">'+money(pend)+'</strong><span class="fig-s">'+pendN+(pendN===1?' order':' orders')+'</span></div></div>';
+  var agg=new Map();
+  list.forEach(function(s){var k=s.productId||s.productName,e=agg.get(k)||{name:prodName(s),units:0,profit:0};e.units+=num(s.qty);e.profit+=saleRev(s)-saleCost(s);agg.set(k,e);});
+  var top=Array.from(agg.values()).sort(function(a,b){return b.profit-a.profit;}).slice(0,5);
+  var recent=sortedSales(list).slice(0,6);
+  var recentHtml=recent.length?'<ul class="list">'+recent.map(function(s){
+    var pr=saleRev(s)-saleCost(s);
+    return '<li class="row"><div><button class="linkish" data-open="sale:'+esc(s.id)+'">'+esc(custName(s))+'</button><span class="small muted">'+esc(prodName(s))+' \u00d7 '+num(s.qty)+', '+esc(fmtDate(s.date))+'</span></div><div class="row-r"><strong>'+money(saleRev(s))+'</strong><span class="small '+(pr<0?'neg':'muted')+'">profit '+signed(pr)+'</span></div></li>';
+  }).join('')+'</ul>':'<p class="muted">No sales in this period.</p>';
+  var topHtml=top.length?'<ul class="list">'+top.map(function(t){
+    return '<li class="row"><div><strong>'+esc(t.name)+'</strong><span class="small muted">'+t.units+(t.units===1?' piece sold':' pieces sold')+'</span></div><div class="row-r"><strong class="'+(t.profit<0?'neg':'')+'">'+signed(t.profit)+'</strong><span class="small muted">profit</span></div></li>';
+  }).join('')+'</ul>':'<p class="muted">Nothing sold in this period.</p>';
+  return figs+'<div class="cols"><div>'+stock+'</div><div><section class="sec"><div class="sec-head"><h2>Recent sales</h2><button class="linkish" data-view="sales">All sales</button></div>'+recentHtml+'</section><section class="sec"><h2>Best earners</h2>'+topHtml+'</section></div></div>';
+}
+function vPrinters(){
+  var rate='<p class="muted" style="margin:0 0 22px">Electricity is priced at <strong>'+money(state.settings.powerRate,2)+'</strong> per unit (kWh). Each product\u2019s print time and its printer\u2019s watts turn that into a power cost.</p>';
+  if(!state.printers.length)return rate+empty('No printers yet','Add each printer with the watts it draws while printing. Then any product with a print time gets its electricity cost worked out.','new-printer','Add a printer');
+  var hours={};
+  state.sales.forEach(function(s){if(s.printerId)hours[s.printerId]=(hours[s.printerId]||0)+num(s.hours)*num(s.qty);});
+  var body=state.printers.slice().sort(byName).map(function(p){
+    var n=state.products.filter(function(x){return x.printerId===p.id;}).length,h=hours[p.id]||0;
+    return '<tr class="click" data-open="printer:'+esc(p.id)+'"><td><button class="linkish" data-open="printer:'+esc(p.id)+'">'+esc(p.name)+'</button>'+(p.notes?'<div class="small muted">'+esc(p.notes)+'</div>':'')+'</td><td class="num">'+num(p.watts)+' W</td><td class="num hide-sm">'+n+'</td><td class="num hide-sm">'+(fmtHours(h)||'0 h')+'</td><td class="num hide-sm">'+(Math.round(h*num(p.watts))/1000).toLocaleString(loc(),{maximumFractionDigits:1})+' kWh</td><td class="num">'+money(num(p.watts)/1000*num(state.settings.powerRate),2)+'</td></tr>';
+  }).join('');
+  return rate+'<div style="overflow-x:auto"><table><thead><tr><th>Printer</th><th class="num">Power</th><th class="num hide-sm">Products</th><th class="num hide-sm">Printed for sales</th><th class="num hide-sm">Energy used</th><th class="num">Power cost per hour</th></tr></thead><tbody>'+body+'</tbody></table></div>';
+}
+function vFilament(){
+  if(!state.filaments.length)return empty('No filament logged yet','Log each spool purchase with what you paid. The cost per gram is worked out from it, and used in every product.','new-purchase','Log a purchase');
+  var S=getStats(),low=num(state.settings.lowStock);
+  var rows=Array.from(S.values()).sort(byName);
+  var purchases=state.filaments.slice().sort(function(a,b){return (b.date||'').localeCompare(a.date||'')||(b.createdAt||'').localeCompare(a.createdAt||'');});
+  var body=purchases.map(function(p){
+    var g=num(p.weight)*num(p.spools),cpg=g>0?num(p.total)/g:0;
+    return '<tr class="click" data-open="purchase:'+esc(p.id)+'"><td>'+esc(fmtDate(p.date))+'</td><td><button class="linkish" data-open="purchase:'+esc(p.id)+'"><span class="dot" style="background:'+safeHex(p.hex)+'"></span>'+esc(fname(p))+'</button></td><td class="hide-sm">'+num(p.spools)+' \u00d7 '+fmtG(p.weight)+'</td><td class="num">'+money(p.total)+'</td><td class="num hide-sm">'+money(cpg,2)+'</td><td class="hide-sm muted">'+esc(p.supplier||'')+'</td></tr>';
+  }).join('');
+  return '<section class="sec"><div class="sec-head"><h2>On the shelf</h2></div>'+rows.map(function(e){return spoolRow(e,low);}).join('')+'</section>'
+    +'<section class="sec"><div class="sec-head"><h2>Purchases</h2></div><div style="overflow-x:auto"><table><thead><tr><th>Date</th><th>Filament</th><th class="hide-sm">Spools</th><th class="num">Paid</th><th class="num hide-sm">Per gram</th><th class="hide-sm">Bought from</th></tr></thead><tbody>'+body+'</tbody></table></div></section>';
+}
+function vProducts(){
+  if(!state.products.length)return empty('No products yet','A product records the grams of filament each piece uses, its details and your listed price, so profit is worked out on every sale.',state.filaments.length?'new-product':'new-purchase',state.filaments.length?'Add a product':'Log filament first');
+  var S=getStats(),q=state.q.trim().toLowerCase();
+  var list=state.products.filter(function(p){return !q||(p.name+' '+(p.category||'')+' '+(p.description||'')).toLowerCase().indexOf(q)>=0;}).sort(byName);
+  if(!list.length)return '<p class="muted">No products match \u201c'+esc(state.q)+'\u201d.</p>';
+  var body=list.map(function(p){
+    var c=productCost(p,S),m=num(p.price)-c.total;
+    var dots=(p.lines||[]).map(function(l){var e=S.get(l.key);return '<span class="dot" title="'+esc(l.name||'')+'" style="background:'+safeHex(e?e.hex:'#8a8f94')+'"></span>';}).join('');
+    return '<tr class="click" data-open="product:'+esc(p.id)+'"><td><button class="linkish" data-open="product:'+esc(p.id)+'">'+esc(p.name)+'</button>'+(function(){var pw=powerOf(p.printerId,p.printHours),m=[];if(p.category)m.push(p.category);if(num(p.printHours)>0)m.push(fmtHours(p.printHours)+(pw.printer?' on '+pw.printer.name:''));return m.length?'<div class="small muted">'+esc(m.join(', '))+'</div>':'';})()+'</td><td class="hide-sm"><span class="dots">'+dots+'</span></td><td class="num hide-sm">'+fmtG(c.grams)+'</td><td class="num">'+money(c.total,2)+'</td><td class="num">'+money(p.price)+'</td><td class="num"><span class="'+(m<0?'neg':'')+'">'+signed(m,2)+'</span>'+(num(p.price)>0?'<div class="small muted">'+pct(m/num(p.price)*100)+'</div>':'')+'</td></tr>';
+  }).join('');
+  return '<div style="overflow-x:auto"><table><thead><tr><th>Product</th><th class="hide-sm">Filament</th><th class="num hide-sm">Grams</th><th class="num">Cost</th><th class="num">Listed price</th><th class="num">Margin</th></tr></thead><tbody>'+body+'</tbody></table></div>';
+}
+function vSales(){
+  if(!state.sales.length)return empty('No sales yet','Record what you sold, the price you sold it at and who bought it. Filament stock and profit update automatically.',state.products.length?'new-sale':(state.filaments.length?'new-product':'new-purchase'),state.products.length?'Record a sale':(state.filaments.length?'Add a product first':'Log filament first'));
+  var q=state.q.trim().toLowerCase();
+  var list=sortedSales(state.sales).filter(function(s){return !q||(custName(s)+' '+prodName(s)+' '+(s.notes||'')).toLowerCase().indexOf(q)>=0;});
+  if(!list.length)return '<p class="muted">No sales match \u201c'+esc(state.q)+'\u201d.</p>';
+  var body=list.map(function(s){
+    var pr=saleRev(s)-saleCost(s);
+    return '<tr class="click" data-open="sale:'+esc(s.id)+'"><td class="hide-sm">'+esc(fmtDate(s.date))+'</td><td><button class="linkish" data-open="sale:'+esc(s.id)+'">'+esc(custName(s))+'</button><div class="small muted only-sm">'+esc(prodName(s))+' \u00d7 '+num(s.qty)+', '+esc(fmtDate(s.date))+'</div></td><td class="hide-sm">'+esc(prodName(s))+'</td><td class="num hide-sm">'+num(s.qty)+'</td><td class="num">'+money(saleRev(s))+'</td><td class="num hide-sm"><span class="'+(pr<0?'neg':'')+'">'+signed(pr)+'</span></td><td><span class="tag '+(s.status==='pending'?'pending':'paid')+'">'+(s.status==='pending'?'Pending':'Paid')+'</span></td></tr>';
+  }).join('');
+  return '<div style="overflow-x:auto"><table><thead><tr><th class="hide-sm">Date</th><th>Customer</th><th class="hide-sm">Product</th><th class="num hide-sm">Qty</th><th class="num">Total</th><th class="num hide-sm">Profit</th><th>Payment</th></tr></thead><tbody>'+body+'</tbody></table></div>';
+}
+function custStats(){
+  var m=new Map();
+  state.customers.forEach(function(c){m.set(c.id,{c:c,orders:0,spent:0,last:''});});
+  state.sales.forEach(function(s){var e=m.get(s.customerId);if(e){e.orders++;e.spent+=saleRev(s);if((s.date||'')>e.last)e.last=s.date;}});
+  return m;
+}
+function vCustomers(){
+  if(!state.customers.length)return empty('No customers yet','Customers are added when you record a sale, or you can add one here first.','new-customer','Add a customer');
+  var q=state.q.trim().toLowerCase(),M=custStats();
+  var list=Array.from(M.values()).filter(function(e){var c=e.c;return !q||[c.name,c.phone,c.email,c.address].join(' ').toLowerCase().indexOf(q)>=0;}).sort(function(a,b){return byName(a.c,b.c);});
+  if(!list.length)return '<p class="muted">No customers match \u201c'+esc(state.q)+'\u201d.</p>';
+  var body=list.map(function(e){
+    var c=e.c;
+    return '<tr class="click" data-open="customer:'+esc(c.id)+'"><td><button class="linkish" data-open="customer:'+esc(c.id)+'">'+esc(c.name)+'</button>'+(c.address?'<div class="small muted">'+esc(c.address)+'</div>':'')+'</td><td class="hide-sm">'+esc(c.phone||'')+(c.email?'<div class="small muted">'+esc(c.email)+'</div>':'')+'</td><td class="num">'+e.orders+'</td><td class="num">'+money(e.spent)+'</td><td class="num hide-sm">'+esc(e.last?fmtDate(e.last):'')+'</td></tr>';
+  }).join('');
+  return '<div style="overflow-x:auto"><table><thead><tr><th>Customer</th><th class="hide-sm">Contact</th><th class="num">Orders</th><th class="num">Spent</th><th class="num hide-sm">Last order</th></tr></thead><tbody>'+body+'</tbody></table></div>';
+}
+
+/* ---------- drawer ---------- */
+var drawerOpen=false,lastFocus=null;
+function openDrawer(title,html){
+  closeDrawer(true);
+  lastFocus=document.activeElement;
+  var root=$('#drawer-root');
+  root.innerHTML='<div class="scrim" data-dclose></div><aside class="drawer" role="dialog" aria-modal="true" aria-labelledby="dtitle"><header><h2 id="dtitle">'+esc(title)+'</h2><button type="button" class="iconbtn" data-dclose aria-label="Close">'+ICONS.x+'</button></header><form class="dform" novalidate>'+html+'</form></aside>';
+  drawerOpen=true;document.documentElement.style.overflow='hidden';
+  var form=$('form',root),first=form.querySelector('input:not([type=hidden]):not([type=color]),select,textarea');
+  if(first)first.focus();
+  return form;
+}
+function closeDrawer(quiet){
+  if(!drawerOpen)return;
+  $('#drawer-root').innerHTML='';drawerOpen=false;document.documentElement.style.overflow='';
+  if(!quiet&&lastFocus&&lastFocus.focus&&document.contains(lastFocus))lastFocus.focus();
+}
+function foot(live,canDelete,label){
+  return '<div class="dfoot"><div class="err" id="err" role="alert"></div>'+live+'<div class="dfoot-btns">'+(canDelete?'<button type="button" class="btn danger" data-del data-label="Delete">Delete</button>':'<span></span>')+'<div class="dfoot-r"><button type="button" class="btn" data-dclose>Cancel</button><button type="submit" class="btn primary">'+esc(label)+'</button></div></div></div>';
+}
+function fail(form,msg){var e=$('#err',form);e.textContent=msg;var f=$('.dbody',form);if(f)f.scrollTop=0;return false;}
+function wireSubmit(form,handler){
+  var busy=false;
+  form.addEventListener('submit',function(ev){
+    ev.preventDefault();if(busy)return;busy=true;$('#err',form).textContent='';
+    var b=form.querySelector('button[type=submit]');b.disabled=true;
+    Promise.resolve(handler()).then(function(ok){if(ok)closeDrawer();},function(){toast('Something went wrong. Try again.',true);}).then(function(){busy=false;if(b)b.disabled=false;});
+  });
+}
+function armDelete(form,run){
+  var b=form.querySelector('[data-del]');if(!b)return;
+  var armed=false,t;
+  b.addEventListener('click',function(){
+    if(!armed){armed=true;b.textContent='Confirm delete';t=setTimeout(function(){armed=false;b.textContent=b.dataset.label;},4000);return;}
+    clearTimeout(t);b.disabled=true;
+    Promise.resolve(run()).then(function(ok){if(ok)closeDrawer();else{b.disabled=false;armed=false;b.textContent=b.dataset.label;}});
+  });
+}
+function ctl(form,n){return form.elements.namedItem(n);}
+
+/* ---------- forms: filament purchase ---------- */
+function openPurchase(id){
+  var p=id?state.filaments.find(function(x){return x.id===id;}):null;
+  if(id&&!p)return;
+  var v=p||{brand:'',material:'',colour:'',hex:'#2b2f33',weight:1000,spools:1,total:'',date:today(),supplier:''};
+  var brands=uniq(state.filaments.map(function(f){return f.brand;}).concat(['Generic','eSUN','Polymaker','Sunlu','Creality','Elegoo','Bambu Lab','Overture']));
+  var mats=uniq(state.filaments.map(function(f){return f.material;}).concat(['PLA','PLA+','PETG','ABS','ASA','TPU','Nylon','PC','Silk PLA']));
+  var html='<div class="dbody"><div class="part">'
+    +'<div class="grid2"><div class="field"><label for="f-brand">Brand <span class="opt">optional</span></label><input id="f-brand" name="brand" list="dl-brand" autocomplete="off" value="'+esc(v.brand)+'"></div>'
+    +'<div class="field"><label for="f-material">Material</label><input id="f-material" name="material" list="dl-mat" autocomplete="off" placeholder="PLA, PETG\u2026" value="'+esc(v.material)+'"></div></div>'
+    +'<div class="grid2 keep"><div class="field"><label for="f-colour">Colour name</label><input id="f-colour" name="colour" autocomplete="off" placeholder="Matte black" value="'+esc(v.colour)+'"></div>'
+    +'<div class="field"><label for="f-hex">Swatch</label><input id="f-hex" name="hex" type="color" value="'+safeHex(v.hex)+'"></div></div>'
+    +(p?'<p class="small muted" style="margin:-6px 0 0">Changing the brand, material or colour makes this a different filament in your stock.</p>':'')
+    +'<div class="grid2"><div class="field"><label for="f-weight">Spool weight (g)</label><input id="f-weight" name="weight" type="number" inputmode="decimal" min="1" step="any" value="'+esc(v.weight)+'"></div>'
+    +'<div class="field"><label for="f-spools">Number of spools</label><input id="f-spools" name="spools" type="number" inputmode="numeric" min="1" step="1" value="'+esc(v.spools)+'"></div></div>'
+    +'<div class="grid2"><div class="field"><label for="f-total">Total paid</label><input id="f-total" name="total" type="number" inputmode="decimal" min="0" step="any" value="'+esc(v.total)+'"></div>'
+    +'<div class="field"><label for="f-date">Purchase date</label><input id="f-date" name="date" type="date" value="'+esc(v.date)+'"></div></div>'
+    +'<div class="field"><label for="f-supplier">Bought from <span class="opt">optional</span></label><input id="f-supplier" name="supplier" autocomplete="off" value="'+esc(v.supplier||'')+'"></div>'
+    +'<datalist id="dl-brand">'+brands.map(function(b){return '<option value="'+esc(b)+'">';}).join('')+'</datalist>'
+    +'<datalist id="dl-mat">'+mats.map(function(b){return '<option value="'+esc(b)+'">';}).join('')+'</datalist>'
+    +'</div></div>'+foot('<div class="live" id="live"></div>',!!p,p?'Save changes':'Save purchase');
+  var form=openDrawer(p?'Edit purchase':'Log filament purchase',html),touched=!!p;
+  function upd(){
+    var w=num(ctl(form,'weight').value)*num(ctl(form,'spools').value),t=num(ctl(form,'total').value);
+    $('#live',form).innerHTML=w>0?'<span><span class="muted">Grams bought</span> <strong>'+fmtG(w)+'</strong></span><span><span class="muted">Cost per gram</span> <strong>'+money(t/w,2)+'</strong></span>':'<span class="muted">Enter the spool weight and price to see the cost per gram.</span>';
+  }
+  form.addEventListener('input',upd);form.addEventListener('change',upd);
+  ctl(form,'hex').addEventListener('input',function(){touched=true;});
+  ctl(form,'colour').addEventListener('input',function(){if(touched)return;var h=guessHex(this.value);if(h)ctl(form,'hex').value=h;});
+  upd();
+  wireSubmit(form,function(){
+    var d={brand:ctl(form,'brand').value.trim(),material:ctl(form,'material').value.trim(),colour:ctl(form,'colour').value.trim(),hex:safeHex(ctl(form,'hex').value),
+      weight:num(ctl(form,'weight').value),spools:Math.max(1,Math.round(num(ctl(form,'spools').value))),total:num(ctl(form,'total').value),
+      date:ctl(form,'date').value||today(),supplier:ctl(form,'supplier').value.trim()};
+    if(!d.material)return fail(form,'Add the material, for example PLA or PETG.');
+    if(!d.colour)return fail(form,'Add the colour name.');
+    if(!(d.weight>0))return fail(form,'Spool weight must be more than 0 g.');
+    if(ctl(form,'total').value.trim()==='')return fail(form,'Add the total you paid.');
+    d.key=fkey(d);d.createdAt=p?p.createdAt:new Date().toISOString();
+    return save('filaments',p?p.id:backend.newId('filaments'),d).then(function(ok){if(ok)toast(p?'Purchase updated':'Purchase saved');return ok;});
+  });
+  if(p)armDelete(form,function(){return remove('filaments',p.id).then(function(ok){if(ok)toast('Purchase deleted');return ok;});});
+}
+
+/* ---------- forms: product ---------- */
+function openProduct(id){
+  var S=getStats(),p=id?state.products.find(function(x){return x.id===id;}):null;
+  if(id&&!p)return;
+  var opts=Array.from(S.values()).sort(byName);
+  var lines=p?(p.lines||[]).map(function(l){return {key:l.key,name:l.name,grams:l.grams};}):[];
+  if(!lines.length&&opts.length)lines=[{key:opts[0].key,name:opts[0].name,grams:''}];
+  var v=p||{name:'',category:'',description:'',printHours:'',price:'',otherCost:'',printerId:'',quantityMade:1};
+  var ph=num(v.printHours),hh=Math.floor(ph+1e-9),mm=Math.round((ph-hh)*60);if(mm>=60){hh+=1;mm=0;}
+  var printers=state.printers.slice().sort(byName);
+  var cats=uniq(state.products.map(function(x){return x.category;}));
+  function lineHtml(l,i){
+    var known=S.has(l.key);
+    var o=opts.map(function(e){return '<option value="'+esc(e.key)+'"'+(e.key===l.key?' selected':'')+'>'+esc(e.name)+' ('+money(e.cpg,2)+'/g)</option>';}).join('')
+      +(known||!l.key?'':'<option value="'+esc(l.key)+'" selected>'+esc(l.name||l.key)+' (no longer logged)</option>');
+    return '<div class="line"><select aria-label="Filament">'+o+'</select><input type="number" inputmode="decimal" min="0" step="any" aria-label="Grams used" placeholder="Grams" value="'+(l.grams===''||l.grams==null?'':esc(l.grams))+'"><button type="button" class="iconbtn" data-rm="'+i+'" aria-label="Remove filament">'+ICONS.x+'</button></div>';
+  }
+  var gramsPart=opts.length||lines.length
+    ?'<div id="lines" class="stack">'+lines.map(lineHtml).join('')+'</div><div><button type="button" class="btn" data-add>Add another filament</button></div>'
+    :'<div class="info-box">Log a filament purchase first, so there is a cost per gram to work from.</div><div><button type="button" class="btn primary" data-goto-purchase>Log a purchase</button></div>';
+  var printerOpts='<option value="">No printer</option>'+printers.map(function(x){return '<option value="'+esc(x.id)+'"'+(x.id===v.printerId?' selected':'')+'>'+esc(x.name)+' ('+num(x.watts)+' W)</option>';}).join('')
+    +(p&&v.printerId&&!printers.some(function(x){return x.id===v.printerId;})?'<option value="'+esc(v.printerId)+'" selected>'+esc(p.printerName||'Deleted printer')+' (no longer added)</option>':'');
+  var powerPart=printers.length
+    ?'<div class="field"><label for="p-printer">Printer</label><select id="p-printer" name="printer">'+printerOpts+'</select></div>'
+      +'<div class="grid2 keep"><div class="field"><label for="p-hours">Print time, hours</label><input id="p-hours" name="hours" type="number" inputmode="numeric" min="0" step="1" placeholder="0" value="'+(hh?hh:'')+'"></div>'
+      +'<div class="field"><label for="p-mins">Minutes</label><input id="p-mins" name="mins" type="number" inputmode="numeric" min="0" max="59" step="1" placeholder="0" value="'+(mm?mm:'')+'"></div></div>'
+      +'<div id="powernote" class="small muted"></div>'
+    :'<div class="info-box">Add a printer with its watts, and the electricity for this print time is worked out for you.</div><div><button type="button" class="btn" data-goto-printer>Add a printer</button></div>'
+      +'<input type="hidden" name="printer" value=""><input type="hidden" name="hours" value="'+(hh||'')+'"><input type="hidden" name="mins" value="'+(mm||'')+'">';
+  var html='<div class="dbody">'
+    +'<div class="field"><label for="p-name">Product name</label><input id="p-name" name="name" autocomplete="off" value="'+esc(v.name)+'"></div>'
+    +'<div class="part"><h3>Grams used</h3><p class="hint">Filament used to print one piece, supports and waste included.</p>'+gramsPart
+    +'<div class="field"><label for="p-made">Quantity made</label><input id="p-made" name="made" type="number" inputmode="numeric" min="0" step="1" placeholder="0" value="'+esc(v.quantityMade==null?0:v.quantityMade)+'"><span class="small muted">This quantity is deducted from filament stock. Leave 0 if this is only a product recipe.</span></div>'
+    +'<div class="field"><label for="p-other">Other cost per piece <span class="opt">optional</span></label><input id="p-other" name="other" type="number" inputmode="decimal" min="0" step="any" placeholder="Packaging, labour" value="'+esc(v.otherCost)+'"></div></div>'
+    +'<div class="part"><h3>Print time and power</h3><p class="hint">Time to print one piece. Electricity is watts \u00d7 hours \u00d7 your price per unit.</p>'+powerPart+'</div>'
+    +'<div class="part"><h3>Details and price</h3>'
+    +'<div class="field"><label for="p-cat">Category <span class="opt">optional</span></label><input id="p-cat" name="category" list="dl-cat" autocomplete="off" value="'+esc(v.category||'')+'"></div>'
+    +'<div class="field"><label for="p-desc">Details <span class="opt">optional</span></label><textarea id="p-desc" name="description" placeholder="Size, colour options, infill, finish">'+esc(v.description||'')+'</textarea></div>'
+    +'<div class="field"><label for="p-price">Listed price</label><input id="p-price" name="price" type="number" inputmode="decimal" min="0" step="any" value="'+esc(v.price)+'"></div>'
+    +'<datalist id="dl-cat">'+cats.map(function(c){return '<option value="'+esc(c)+'">';}).join('')+'</datalist></div>'
+    +'</div>'+foot('<div class="live" id="live"></div>',!!p,p?'Save changes':'Save product');
+  var form=openDrawer(p?'Edit product':'New product',html);
+  function sync(){
+    lines=$$('.line',form).map(function(r,i){
+      var sel=r.querySelector('select'),key=sel.value,e=S.get(key);
+      return {key:key,name:e?e.name:(lines[i]&&lines[i].key===key?lines[i].name:key),grams:r.querySelector('input').value};
+    });
+  }
+  function draw(){var a=$('#lines',form);if(a)a.innerHTML=lines.map(lineHtml).join('');}
+  function hoursVal(){return Math.max(0,Math.round(num(ctl(form,'hours').value)))+Math.max(0,Math.min(59,Math.round(num(ctl(form,'mins').value))))/60;}
+  function upd(){
+    sync();
+    var hrs=hoursVal(),pid=ctl(form,'printer').value;
+    var c=productCost({lines:lines.map(function(l){return {key:l.key,grams:num(l.grams)};}),otherCost:ctl(form,'other').value,printerId:pid,printHours:hrs},S);
+    var price=num(ctl(form,'price').value),m=price-c.total;
+    var note=$('#powernote',form);
+    if(note){
+      var pr=state.printers.find(function(x){return x.id===pid;});
+      note.textContent=!pid?'Choose a printer to include electricity in the cost.':(pr?(hrs>0?(Math.round(c.kwh*1000)/1000).toLocaleString(loc())+' kWh at '+money(state.settings.powerRate,2)+' per unit = '+money(c.elec,2)+' of electricity.':'Add the print time to work out the electricity.'):'This printer was deleted, so no electricity is counted.');
+    }
+    $('#live',form).innerHTML='<span><span class="muted">Filament</span> <strong>'+money(c.fil,2)+'</strong></span>'
+      +'<span><span class="muted">Electricity</span> <strong>'+money(c.elec,2)+'</strong></span>'
+      +'<span><span class="muted">Cost per piece</span> <strong>'+money(c.total,2)+'</strong></span>'
+      +(price>0?'<span><span class="muted">Margin</span> <strong class="'+(m<0?'neg':'')+'">'+signed(m,2)+' ('+pct(m/price*100)+')</strong></span>':'');
+  }
+  form.addEventListener('input',upd);form.addEventListener('change',upd);
+  form.addEventListener('click',function(e){
+    var rm=e.target.closest('[data-rm]');
+    if(rm){sync();lines.splice(+rm.dataset.rm,1);draw();upd();return;}
+    if(e.target.closest('[data-add]')){
+      sync();lines.push({key:opts.length?opts[0].key:'',name:opts.length?opts[0].name:'',grams:''});draw();upd();
+      var ins=$$('.line input',form);if(ins.length)ins[ins.length-1].focus();return;
+    }
+    if(e.target.closest('[data-goto-purchase]')){closeDrawer(true);openPurchase();return;}
+    if(e.target.closest('[data-goto-printer]')){closeDrawer(true);openPrinter();}
+  });
+  upd();
+  wireSubmit(form,function(){
+    sync();
+    var name=ctl(form,'name').value.trim();
+    if(!name)return fail(form,'Add a product name.');
+    var used=lines.filter(function(l){return l.key&&num(l.grams)>0;}).map(function(l){return {key:l.key,name:l.name,grams:num(l.grams)};});
+    if(!used.length)return fail(form,'Add the grams of filament used for one piece.');
+    var pid=ctl(form,'printer').value,hrs=hoursVal();
+    if(pid&&!(hrs>0))return fail(form,'Add the print time so the electricity can be worked out.');
+    if(ctl(form,'price').value.trim()==='')return fail(form,'Add the listed price.');
+    var pr=state.printers.find(function(x){return x.id===pid;});
+    var d={name:name,category:ctl(form,'category').value.trim(),description:ctl(form,'description').value.trim(),printHours:hrs,printerId:pid,printerName:pr?pr.name:(p&&p.printerId===pid?p.printerName||'':''),
+      price:num(ctl(form,'price').value),otherCost:num(ctl(form,'other').value),quantityMade:Math.max(0,Math.floor(num(ctl(form,'made').value))),lines:used,createdAt:p?p.createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};
+    return save('products',p?p.id:backend.newId('products'),d).then(function(ok){if(ok)toast(p?'Product updated':'Product saved');return ok;});
+  });
+  if(p)armDelete(form,function(){return remove('products',p.id).then(function(ok){if(ok)toast('Product deleted');return ok;});});
+}
+
+/* ---------- forms: printer ---------- */
+function openPrinter(id){
+  var p=id?state.printers.find(function(x){return x.id===id;}):null;
+  if(id&&!p)return;
+  var v=p||{name:'',watts:'',notes:''};
+  var used=p?state.products.filter(function(x){return x.printerId===p.id;}).length:0;
+  var html='<div class="dbody"><div class="part">'
+    +'<div class="field"><label for="r-name">Printer name</label><input id="r-name" name="name" autocomplete="off" placeholder="Ender 3 V3, Bambu A1\u2026" value="'+esc(v.name)+'"></div>'
+    +'<div class="field"><label for="r-watts">Power while printing (watts)</label><input id="r-watts" name="watts" type="number" inputmode="decimal" min="1" step="any" value="'+esc(v.watts)+'"></div>'
+    +'<p class="small muted" style="margin:-6px 0 0">Use the average draw during a print, not the peak on the rating label. A plug-in watt meter gives the most accurate figure.</p>'
+    +'<div class="field"><label for="r-notes">Notes <span class="opt">optional</span></label><textarea id="r-notes" name="notes" placeholder="Nozzle size, where it sits, anything useful">'+esc(v.notes||'')+'</textarea></div>'
+    +(p&&used?'<p class="small muted" style="margin:0">'+used+(used===1?' product uses':' products use')+' this printer. Deleting it removes their electricity cost until you pick another printer.</p>':'')
+    +'</div></div>'+foot('<div class="live" id="live"></div>',!!p,p?'Save changes':'Save printer');
+  var form=openDrawer(p?'Edit printer':'Add printer',html);
+  function upd(){
+    var w=num(ctl(form,'watts').value);
+    $('#live',form).innerHTML=w>0?'<span><span class="muted">Energy per hour</span> <strong>'+(w/1000).toLocaleString(loc(),{maximumFractionDigits:3})+' kWh</strong></span><span><span class="muted">Cost per hour</span> <strong>'+money(w/1000*num(state.settings.powerRate),2)+'</strong></span>':'<span class="muted">Enter the watts to see the electricity cost per hour.</span>';
+  }
+  form.addEventListener('input',upd);upd();
+  wireSubmit(form,function(){
+    var name=ctl(form,'name').value.trim(),w=num(ctl(form,'watts').value);
+    if(!name)return fail(form,'Add a printer name.');
+    if(!(w>0))return fail(form,'Add the watts the printer draws while printing.');
+    return save('printers',p?p.id:backend.newId('printers'),{name:name,watts:w,notes:ctl(form,'notes').value.trim(),createdAt:p?p.createdAt:new Date().toISOString()}).then(function(ok){if(ok)toast(p?'Printer updated':'Printer saved');return ok;});
+  });
+  if(p)armDelete(form,function(){return remove('printers',p.id).then(function(ok){if(ok)toast('Printer deleted');return ok;});});
+}
+
+/* ---------- forms: sale ---------- */
+function openSale(id){
+  var S=getStats(),s=id?state.sales.find(function(x){return x.id===id;}):null;
+  if(id&&!s)return;
+  var prods=state.products.slice().sort(byName),custs=state.customers.slice().sort(byName);
+  if(!s&&!prods.length){toast('Add a product before recording a sale.',true);return;}
+  var v=s||{date:today(),productId:'',qty:1,unitPrice:'',status:'paid',customerId:custs.length?'':'__new',notes:''};
+  var prodOpts='<option value="">Choose a product</option>'+prods.map(function(p){return '<option value="'+esc(p.id)+'"'+(p.id===v.productId?' selected':'')+'>'+esc(p.name)+'</option>';}).join('')
+    +(s&&!prods.some(function(p){return p.id===s.productId;})?'<option value="'+esc(s.productId||'')+'" selected>'+esc(s.productName||'Deleted product')+'</option>':'');
+  var custOpts='<option value="">Choose a customer</option>'+custs.map(function(c){return '<option value="'+esc(c.id)+'"'+(c.id===v.customerId?' selected':'')+'>'+esc(c.name)+(c.phone?' ('+esc(c.phone)+')':'')+'</option>';}).join('')
+    +(s&&s.customerId&&!custs.some(function(c){return c.id===s.customerId;})?'<option value="'+esc(s.customerId)+'" selected>'+esc(s.customerName||'Deleted customer')+'</option>':'')
+    +'<option value="__new"'+(v.customerId==='__new'?' selected':'')+'>New customer</option>';
+  var html='<div class="dbody"><div class="part">'
+    +'<div class="grid2"><div class="field"><label for="s-date">Date</label><input id="s-date" name="date" type="date" value="'+esc(v.date)+'"></div>'
+    +'<div class="field"><label for="s-status">Payment</label><select id="s-status" name="status"><option value="paid"'+(v.status!=='pending'?' selected':'')+'>Paid</option><option value="pending"'+(v.status==='pending'?' selected':'')+'>Pending</option></select></div></div>'
+    +'<div class="field"><label for="s-prod">Product</label><select id="s-prod" name="product">'+prodOpts+'</select></div>'
+    +'<div class="grid2"><div class="field"><label for="s-qty">Quantity</label><input id="s-qty" name="qty" type="number" inputmode="numeric" min="1" step="1" value="'+esc(v.qty)+'"></div>'
+    +'<div class="field"><label for="s-price">Selling price per piece</label><input id="s-price" name="price" type="number" inputmode="decimal" min="0" step="any" value="'+esc(v.unitPrice)+'"></div></div>'
+    +'<div id="stockwarn"></div></div>'
+    +'<div class="part"><h3>Customer</h3><div class="field"><label for="s-cust" class="sr">Customer</label><select id="s-cust" name="customer">'+custOpts+'</select></div>'
+    +'<div id="newcust" class="stack"'+(v.customerId==='__new'?'':' hidden')+'>'
+    +'<div class="field"><label for="c-name">Name</label><input id="c-name" name="cname" autocomplete="off"></div>'
+    +'<div class="grid2"><div class="field"><label for="c-phone">Phone <span class="opt">optional</span></label><input id="c-phone" name="cphone" type="tel" autocomplete="off"></div>'
+    +'<div class="field"><label for="c-email">Email <span class="opt">optional</span></label><input id="c-email" name="cemail" type="email" autocomplete="off"></div></div>'
+    +'<div class="field"><label for="c-addr">City or address <span class="opt">optional</span></label><input id="c-addr" name="caddr" autocomplete="off"></div></div>'
+    +'<div class="field"><label for="s-notes">Notes <span class="opt">optional</span></label><textarea id="s-notes" name="notes">'+esc(v.notes||'')+'</textarea></div></div>'
+    +'</div>'+foot('<div class="live" id="live"></div>',!!s,s?'Save changes':'Save sale');
+  var form=openDrawer(s?'Edit sale':'Record a sale',html);
+  function curProd(){var pid=ctl(form,'product').value;return state.products.find(function(p){return p.id===pid;});}
+  function unitCost(){
+    var pr=curProd();
+    if(s&&s.productId===ctl(form,'product').value)return num(s.unitCost);
+    return pr?productCost(pr,S).total:0;
+  }
+  function upd(){
+    var qty=Math.max(0,Math.round(num(ctl(form,'qty').value))),price=num(ctl(form,'price').value),pr=curProd();
+    var total=qty*price,cost=unitCost()*qty,profit=total-cost;
+    $('#live',form).innerHTML=(pr||(s&&s.productId===ctl(form,'product').value))?'<span><span class="muted">Total</span> <strong>'+money(total,2)+'</strong></span><span><span class="muted">Cost</span> <strong>'+money(cost,2)+'</strong></span><span><span class="muted">Profit</span> <strong class="'+(profit<0?'neg':'')+'">'+signed(profit,2)+'</strong></span>':'<span class="muted">Choose a product to see the profit.</span>';
+    var w=[];
+    if(pr){
+      (pr.lines||[]).forEach(function(l){
+        var e=S.get(l.key),need=num(l.grams)*qty,left=e?e.left:0;
+        if(s&&s.productId===pr.id)(s.usage||[]).forEach(function(u){if(u.key===l.key)left+=num(u.grams)*num(s.qty);});
+        if(need>left)w.push('Not enough '+(e?e.name:(l.name||l.key))+' on the shelf: this needs '+fmtG(need)+', about '+fmtG(Math.max(0,left))+' left.');
+      });
+    }
+    $('#stockwarn',form).innerHTML=w.length?'<div class="warn-box">'+w.map(esc).join('<br>')+'</div>':'';
+  }
+  ctl(form,'product').addEventListener('change',function(){var pr=curProd();if(pr)ctl(form,'price').value=pr.price;upd();});
+  ctl(form,'customer').addEventListener('change',function(){$('#newcust',form).hidden=this.value!=='__new';});
+  form.addEventListener('input',upd);form.addEventListener('change',upd);
+  upd();
+  wireSubmit(form,function(){
+    var pid=ctl(form,'product').value,pr=curProd(),keep=s&&s.productId===pid&&pid;
+    if(!pid||(!pr&&!keep))return fail(form,'Choose the product that was sold.');
+    var qty=Math.round(num(ctl(form,'qty').value));
+    if(!(qty>=1))return fail(form,'Quantity must be at least 1.');
+    if(ctl(form,'price').value.trim()==='')return fail(form,'Add the selling price.');
+    var sel=ctl(form,'customer').value;
+    if(!sel)return fail(form,'Choose a customer or add a new one.');
+    var newCust=null;
+    if(sel==='__new'){
+      var nm=ctl(form,'cname').value.trim();
+      if(!nm)return fail(form,'Add the customer\u2019s name.');
+      newCust={name:nm,phone:ctl(form,'cphone').value.trim(),email:ctl(form,'cemail').value.trim(),address:ctl(form,'caddr').value.trim(),notes:'',createdAt:new Date().toISOString()};
+    }
+    var custId=sel,custNameSnap;
+    var run=Promise.resolve(true);
+    if(newCust){
+      custId=backend.newId('customers');custNameSnap=newCust.name;
+      run=save('customers',custId,newCust);
+    }else{
+      var ex=state.customers.find(function(c){return c.id===sel;});
+      custNameSnap=ex?ex.name:(s&&s.customerName)||'';
+    }
+    return run.then(function(ok){
+      if(!ok)return false;
+      var snap=keep?{unitCost:s.unitCost,usage:s.usage||[],printerId:s.printerId||'',hours:num(s.hours)}:{unitCost:productCost(pr,S).total,usage:(pr.lines||[]).map(function(l){return {key:l.key,grams:num(l.grams)};}),printerId:pr.printerId||'',hours:num(pr.printHours)};
+      var d={date:ctl(form,'date').value||today(),productId:pid,productName:pr?pr.name:s.productName,qty:qty,unitPrice:num(ctl(form,'price').value),
+        unitCost:snap.unitCost,usage:snap.usage,printerId:snap.printerId,hours:snap.hours,status:ctl(form,'status').value==='pending'?'pending':'paid',customerId:custId,customerName:custNameSnap,
+        notes:ctl(form,'notes').value.trim(),createdAt:s?s.createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};
+      return save('sales',s?s.id:backend.newId('sales'),d).then(function(ok2){if(ok2)toast(s?'Sale updated':'Sale saved');return ok2;});
+    });
+  });
+  if(s)armDelete(form,function(){return remove('sales',s.id).then(function(ok){if(ok)toast('Sale deleted');return ok;});});
+}
+
+/* ---------- forms: customer ---------- */
+function openCustomer(id){
+  var c=id?state.customers.find(function(x){return x.id===id;}):null;
+  if(id&&!c)return;
+  var v=c||{name:'',phone:'',email:'',address:'',notes:''};
+  var hist='';
+  if(c){
+    var orders=sortedSales(state.sales.filter(function(s){return s.customerId===c.id;}));
+    hist='<div class="part"><h3>Orders</h3>'+(orders.length?'<ul class="list">'+orders.map(function(s){
+      return '<li class="row"><div><strong>'+esc(prodName(s))+' \u00d7 '+num(s.qty)+'</strong><span class="small muted">'+esc(fmtDate(s.date))+', '+(s.status==='pending'?'payment pending':'paid')+'</span></div><div class="row-r"><strong>'+money(saleRev(s))+'</strong></div></li>';
+    }).join('')+'</ul>':'<p class="muted" style="margin:0">No orders yet.</p>')+'</div>';
+  }
+  var html='<div class="dbody"><div class="part">'
+    +'<div class="field"><label for="c-name">Name</label><input id="c-name" name="name" autocomplete="off" value="'+esc(v.name)+'"></div>'
+    +'<div class="grid2"><div class="field"><label for="c-phone">Phone <span class="opt">optional</span></label><input id="c-phone" name="phone" type="tel" autocomplete="off" value="'+esc(v.phone||'')+'"></div>'
+    +'<div class="field"><label for="c-email">Email <span class="opt">optional</span></label><input id="c-email" name="email" type="email" autocomplete="off" value="'+esc(v.email||'')+'"></div></div>'
+    +'<div class="field"><label for="c-addr">City or address <span class="opt">optional</span></label><input id="c-addr" name="address" autocomplete="off" value="'+esc(v.address||'')+'"></div>'
+    +'<div class="field"><label for="c-notes">Notes <span class="opt">optional</span></label><textarea id="c-notes" name="notes" placeholder="Preferences, repeat orders, how they found you">'+esc(v.notes||'')+'</textarea></div></div>'
+    +hist+(c?'<p class="small muted" style="margin:0">Deleting a customer keeps their past sales, listed under the name they had.</p>':'')
+    +'</div>'+foot('',!!c,c?'Save changes':'Save customer');
+  var form=openDrawer(c?'Edit customer':'Add customer',html);
+  wireSubmit(form,function(){
+    var name=ctl(form,'name').value.trim();
+    if(!name)return fail(form,'Add the customer\u2019s name.');
+    var d={name:name,phone:ctl(form,'phone').value.trim(),email:ctl(form,'email').value.trim(),address:ctl(form,'address').value.trim(),notes:ctl(form,'notes').value.trim(),createdAt:c?c.createdAt:new Date().toISOString()};
+    return save('customers',c?c.id:backend.newId('customers'),d).then(function(ok){if(ok)toast(c?'Customer updated':'Customer saved');return ok;});
+  });
+  if(c)armDelete(form,function(){return remove('customers',c.id).then(function(ok){if(ok)toast('Customer deleted');return ok;});});
+}
+
+
+/* ---------- reports + Google Sheets ---------- */
+function reportFilaments(){
+  return Array.from(getStats().values()).sort(byName).map(function(e){
+    return {
+      'Brand':e.brand||'Generic',
+      'Material':e.material||'',
+      'Colour':e.colour||'',
+      'Purchased (g)':Math.round(e.bought*10)/10,
+      'Used for products made (g)':Math.round(e.productionUsed*10)/10,
+      'Used in unproduced sales (g)':Math.round(e.used*10)/10,
+      'Configured in product recipes (g/piece)':Math.round(e.recipeUsed*10)/10,
+      'Total actual used (g)':Math.round(e.actualUsed*10)/10,
+      'Remaining (g)':Math.round(e.left*10)/10,
+      'Total paid':Math.round(e.paid*100)/100,
+      'Cost / g':Math.round(e.cpg*10000)/10000
+    };
+  });
+}
+function reportProducts(){
+  var S=getStats();
+  return state.products.slice().sort(byName).map(function(p){
+    var c=productCost(p,S), margin=num(p.price)-c.total;
+    return {
+      'Product':p.name||'',
+      'Category':p.category||'',
+      'Quantity made':Math.max(0,num(p.quantityMade)),
+      'Filament per piece (g)':Math.round(c.grams*10)/10,
+      'Filament cost / piece':Math.round(c.fil*100)/100,
+      'Electricity cost':Math.round(c.elec*100)/100,
+      'Other cost':Math.round(c.other*100)/100,
+      'Total cost':Math.round(c.total*100)/100,
+      'Listed price':Math.round(num(p.price)*100)/100,
+      'Margin':Math.round(margin*100)/100,
+      'Margin %':num(p.price)>0?Math.round(margin/num(p.price)*10000)/100:0
+    };
+  });
+}
+function reportSales(){
+  return sortedSales(state.sales).map(function(s){
+    var revenue=saleRev(s), cost=saleCost(s);
+    return {
+      'Date':s.date||'',
+      'Customer':custName(s),
+      'Product':prodName(s),
+      'Qty':num(s.qty),
+      'Unit price':Math.round(num(s.unitPrice)*100)/100,
+      'Sales total':Math.round(revenue*100)/100,
+      'Unit cost':Math.round(num(s.unitCost)*100)/100,
+      'Total cost':Math.round(cost*100)/100,
+      'Profit':Math.round((revenue-cost)*100)/100,
+      'Payment':s.status==='pending'?'Pending':'Paid'
+    };
+  });
+}
+function reportTable(title,rows){
+  if(!rows.length)return '<section class="sec"><div class="sec-head"><h2>'+esc(title)+'</h2></div><p class="muted">No data yet.</p></section>';
+  var cols=Object.keys(rows[0]);
+  return '<section class="sec"><div class="sec-head"><h2>'+esc(title)+'</h2><span class="small muted">'+rows.length+' rows</span></div><div style="overflow-x:auto"><table><thead><tr>'+
+    cols.map(function(c){return '<th>'+esc(c)+'</th>';}).join('')+
+    '</tr></thead><tbody>'+
+    rows.slice(0,200).map(function(r){return '<tr>'+cols.map(function(c){
+      var v=r[c], txt=typeof v==='number'?(c.indexOf('%')>=0?String(v)+'%':String(v)):String(v==null?'':v);
+      return '<td>'+esc(txt)+'</td>';
+    }).join('')+'</tr>';}).join('')+
+    '</tbody></table></div></section>';
+}
+function vReports(){
+  var f=reportFilaments(),p=reportProducts(),s=reportSales();
+  return '<section class="sec"><div class="info-box"><strong>Google Sheets</strong> — Auto-sync is enabled when a Web App URL is configured in Settings. Changes to filament purchases, products, sales and customers are sent automatically. You can also use “Sync to Google Sheets” above. Quantity made is deducted from filament stock; recipe grams are shown separately. The sync writes three tabs: Filament Report, Product Report and Sales Report.</div></section>'+
+    reportTable('Filament report',f)+reportTable('Product report',p)+reportTable('Sales report',s);
+}
+function sheetsPayload(){
+  return JSON.stringify({
+    source:'vforge 3d CRM',
+    syncedAt:new Date().toISOString(),
+    filament:reportFilaments(),
+    products:reportProducts(),
+    sales:reportSales()
+  });
+}
+function testGoogleSheets(){
+  var url=(state.settings.googleSheetsUrl||'').trim();
+  if(!url){toast('Add your Google Sheets Web App URL in Settings first.',true);return;}
+  var frame=document.getElementById('sheets-test-frame');
+  if(!frame){frame=document.createElement('iframe');frame.id='sheets-test-frame';frame.name='sheets-test-frame';frame.style.display='none';document.body.appendChild(frame);}
+  frame.onload=function(){toast('Google Sheets Web App is reachable.');};
+  frame.src=url+'?test='+encodeURIComponent(Date.now());
+}
+function syncGoogleSheets(silent){
+  var url=(state.settings.googleSheetsUrl||'').trim();
+  if(!url){
+    if(!silent)toast('Add your Google Sheets Web App URL in Settings first.',true);
+    return Promise.reject(new Error('Google Sheets URL is not configured'));
+  }
+  if(!silent)toast('Sending report to Google Sheets…');
+
+  // IMPORTANT: Do not use form.submit() or iframe navigation here.
+  // In the ChatGPT/local HTML environment that can trigger an
+  // "External site" confirmation popup. sendBeacon sends the POST in the
+  // background without navigating the current page.
+  var payload=sheetsPayload();
+  var body=new URLSearchParams();
+  body.append('payload',payload);
+
+  return new Promise(function(resolve,reject){
+    var sent=false;
+    try{
+      if(navigator.sendBeacon){
+        sent=navigator.sendBeacon(url,body);
+      }
+    }catch(err){sent=false;}
+
+    // Fallback for browsers that reject sendBeacon. This request also does
+    // not navigate the page. Apps Script receives it as a POST parameter.
+    if(!sent){
+      try{
+        fetch(url,{
+          method:'POST',
+          mode:'no-cors',
+          body:body,
+          keepalive:true,
+          credentials:'omit'
+        });
+        sent=true;
+      }catch(err){sent=false;}
+    }
+
+    if(!sent){
+      if(!silent)toast('Could not send the Google Sheets report.',true);
+      reject(new Error('Google Sheets request could not be queued'));
+      return;
+    }
+
+    state.settings.lastSheetsSync=new Date().toISOString();
+    // Do not save settings here; that would trigger another sync loop.
+    if(!silent)toast('✓ Filament/Product/Sales reports sent to Google Sheets');
+    else toast('✓ Google Sheets auto-updated');
+    resolve(true);
+  });
+}
+
+function reportCsv(rows){
+  if(!rows.length)return '';
+  var cols=Object.keys(rows[0]);
+  function cell(v){return '"'+String(v==null?'':v).replace(/"/g,'""')+'"';}
+  return cols.map(cell).join(',')+'\\n'+rows.map(function(r){return cols.map(function(c){return cell(r[c]);}).join(',');}).join('\\n');
+}
+function exportReportsCsv(){
+  var f=reportCsv(reportFilaments()),p=reportCsv(reportProducts()),s=reportCsv(reportSales());
+  offerFile('vforge-3d-reports-filament.csv',f);
+  setTimeout(function(){offerFile('vforge-3d-reports-products.csv',p);},150);
+  setTimeout(function(){offerFile('vforge-3d-reports-sales.csv',s);},300);
+}
+
+/* ---------- settings + export ---------- */
+function csvCell(v,text){
+  var s=String(v==null?'':v);
+  if(text&&/^[=+\-@\t\r]/.test(s))s="'"+s;
+  return /[",\n\r]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;
+}
+function salesCsv(){
+  var head=['Date','Customer','Phone','Email','Product','Quantity','Price per piece','Total','Cost per piece','Profit','Payment','Notes'];
+  var rows=sortedSales(state.sales).map(function(s){
+    var c=state.customers.find(function(x){return x.id===s.customerId;})||{};
+    return [[s.date,1],[custName(s),1],[c.phone||'',1],[c.email||'',1],[prodName(s),1],[num(s.qty),0],[num(s.unitPrice),0],[saleRev(s),0],[num(s.unitCost),0],[saleRev(s)-saleCost(s),0],[s.status==='pending'?'Pending':'Paid',1],[s.notes||'',1]].map(function(x){return csvCell(x[0],x[1]);}).join(',');
+  });
+  return [head.join(',')].concat(rows).join('\n');
+}
+function offerFile(name,data){
+  if(!dlCap){toast('Downloads are not available here.',true);return;}
+  Promise.resolve(dlCap.save({filename:name,data:data})).then(function(){toast('File saved');},function(e){if(e&&e.code==='declined')return;toast('Could not save the file.',true);});
+}
+function openSettings(){
+  var s=state.settings;
+  var html='<div class="dbody"><div class="part">'
+    +'<div class="field"><label for="st-cur">Currency</label><select id="st-cur" name="currency">'+CURRENCIES.map(function(c){return '<option value="'+c[0]+'"'+(c[0]===s.currency?' selected':'')+'>'+c[0]+', '+c[1]+'</option>';}).join('')+'</select></div>'
+    +'<div class="field"><label for="st-rate">Electricity price per unit (kWh)</label><input id="st-rate" name="rate" type="number" inputmode="decimal" min="0" step="any" value="'+esc(s.powerRate)+'"></div>'
+    +'<p class="small muted" style="margin:-8px 0 0">Tariffs differ by state and by home or commercial connection, so there is no single national price. Homes are commonly around \u20b95 to \u20b98 a unit and commercial connections \u20b98 to \u20b916. For the most accurate number, divide a full month\u2019s bill by the units used.</p>'
+    +'<div class="field"><label for="st-low">Warn when a filament is below (g)</label><input id="st-low" name="low" type="number" inputmode="numeric" min="0" step="any" value="'+esc(s.lowStock)+'"></div>'
+    +'<div class="field"><label for="st-sheets">Google Sheets Web App URL <span class="opt">optional</span></label><input id="st-sheets" name="sheets" type="url" placeholder="https://script.google.com/macros/s/.../exec" value="'+esc(s.googleSheetsUrl||'')+'"></div>'
+    +(s.lastSheetsSync?'<div class="small muted">Last sync sent: '+esc(new Date(s.lastSheetsSync).toLocaleString())+'</div>':'')+'</div>'
+    +'<div class="part"><h3>Export</h3><p class="hint">Take your records into a spreadsheet or keep a backup.</p><div style="display:flex;gap:10px;flex-wrap:wrap"><button type="button" class="btn" data-export="csv">Sales as CSV</button><button type="button" class="btn" data-export="json">Everything as JSON</button></div></div>'
+    +'</div>'+foot('',false,'Save settings');
+  var form=openDrawer('Settings',html);
+  form.addEventListener('click',function(e){
+    var b=e.target.closest('[data-export]');if(!b)return;
+    if(b.dataset.export==='csv')offerFile('vforge-3d-sales.csv',salesCsv());
+    else offerFile('vforge-3d-backup.json',JSON.stringify({exportedAt:new Date().toISOString(),filaments:state.filaments,printers:state.printers,products:state.products,customers:state.customers,sales:state.sales,settings:state.settings},null,2));
+  });
+  wireSubmit(form,function(){
+    var low=Math.max(0,num(ctl(form,'low').value));
+    var newUrl=ctl(form,'sheets').value.trim();
+    return save('settings','main',{currency:ctl(form,'currency').value,lowStock:low,powerRate:Math.max(0,num(ctl(form,'rate').value)),googleSheetsUrl:newUrl,lastSheetsSync:s.lastSheetsSync||''}).then(function(ok){
+      if(ok){state.settings.googleSheetsUrl=newUrl;toast('Settings saved');}
+      return ok;
+    });
+  });
+}
+
+/* ---------- events ---------- */
+document.addEventListener('click',function(e){
+  var t=e.target.closest('[data-dclose]');
+  if(t&&drawerOpen){closeDrawer();return;}
+  t=e.target.closest('[data-view]');
+  if(t&&!drawerOpen){go(t.dataset.view);return;}
+  t=e.target.closest('[data-open]');
+  if(t&&!drawerOpen){
+    var p=t.dataset.open.split(':'),k=p[0],id=p.slice(1).join(':');
+    if(k==='purchase')openPurchase(id);else if(k==='printer')openPrinter(id);else if(k==='product')openProduct(id);else if(k==='sale')openSale(id);else if(k==='customer')openCustomer(id);
+    return;
+  }
+  t=e.target.closest('[data-act]');
+  if(t&&!drawerOpen&&!t.disabled){
+    var a=t.dataset.act;
+    if(a==='new-purchase')openPurchase();
+    else if(a==='new-product')openProduct();
+    else if(a==='new-printer')openPrinter();
+    else if(a==='new-sale')openSale();
+    else if(a==='new-customer')openCustomer();
+    else if(a==='settings')openSettings();
+    else if(a==='sync-sheets')syncGoogleSheets();
+    else if(a==='test-sheets')testGoogleSheets();
+    else if(a==='export-report-csv')exportReportsCsv();
+    else if(a==='refresh')refresh(false);
+    else if(a.indexOf('period:')===0){state.period=a.slice(7);renderToolbar();renderContent();}
+  }
+});
+document.addEventListener('visibilitychange',function(){
+  if(!document.hidden&&state.ready&&Date.now()-lastRefresh>15000)refresh(true);
+});
+document.addEventListener('input',function(e){
+  if(e.target.id==='q'){state.q=e.target.value;renderContent();}
+});
+document.addEventListener('keydown',function(e){
+  if(!drawerOpen)return;
+  if(e.key==='Escape'){closeDrawer();return;}
+  if(e.key!=='Tab')return;
+  var d=$('.drawer');if(!d)return;
+  var f=$$('button,input,select,textarea',d).filter(function(x){return !x.disabled&&(x.offsetParent!==null||x===document.activeElement);});
+  if(!f.length)return;
+  var first=f[0],last=f[f.length-1];
+  if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}
+  else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}
+});
+
+/* ---------- refresh ---------- */
+var refreshing=false,lastRefresh=Date.now();
+function setStamp(){
+  var e=$('#stamp');
+  if(e&&state.updatedAt)e.textContent='Updated '+state.updatedAt.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'});
+}
+function refresh(silent){
+  if(refreshing||!backend)return Promise.resolve();
+  refreshing=true;lastRefresh=Date.now();
+  var b=$('#refresh-btn');if(b){b.classList.add('busy');b.disabled=true;}
+  return Promise.all(COLS.map(function(c){return Promise.resolve(backend.fetch(c)).then(function(docs){onDocs(c,docs);});}))
+    .then(function(){if(!silent)toast('Refreshed');},function(){if(!silent)toast('Could not refresh. Check your connection and try again.',true);})
+    .then(function(){refreshing=false;var b2=$('#refresh-btn');if(b2){b2.classList.remove('busy');b2.disabled=false;}});
+}
+
+/* ---------- boot ---------- */
+function onDocs(col,docs){
+  if(col==='settings'){
+    var m=docs.find(function(d){return d.id==='main';});
+    state.settings=Object.assign({currency:'INR',lowStock:200,powerRate:DEFAULT_RATE,googleSheetsUrl:'',lastSheetsSync:''},m||{});
+  }else state[col]=docs;
+  ver++;state.loaded[col]=true;state.updatedAt=new Date();
+  if(!state.ready&&COLS.every(function(c){return state.loaded[c];}))state.ready=true;
+  if(state.ready){
+    renderContent();setStamp();
+    // Sync only after the live/backend update has reached local state.
+    // This prevents Google Sheets from receiving the previous inventory snapshot.
+    if(['filaments','products','sales','customers'].indexOf(col)>=0)queueAutoSheetsSync('backend-update:'+col);
+  }
+}
+function boot(){
+  render();
+  var claude=window.claude,useFn=claude&&typeof claude.use==='function';
+  var dbP=useFn?Promise.resolve().then(function(){return claude.use('db');}).catch(function(){return null;}):Promise.resolve(null);
+  var dlP=useFn?Promise.resolve().then(function(){return claude.use('downloads');}).catch(function(){return null;}):Promise.resolve(null);
+  Promise.all([dbP,dlP]).then(function(r){
+    dlCap=r[1];
+    backend=r[0]?makeDbBackend(r[0]):makeLocalBackend();
+    state.storage=backend.kind;
+    renderNotice();
+    COLS.forEach(function(c){
+      backend.subscribe(c,function(docs){onDocs(c,docs);},function(err){
+        toast(err&&err.code==='revoked'?'Access to this workspace changed. Reload the page.':'Live updates stopped. Reload the page.',true);
+      });
+    });
+    setTimeout(function(){if(!state.ready){state.ready=true;renderContent();}},6000);
+  });
+}
+boot();
+})();
+</script>
+</body>
+</html>
