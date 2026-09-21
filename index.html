@@ -836,7 +836,7 @@ function openPurchase(id){
   var p=id?state.filaments.find(function(x){return x.id===id;}):null;
   if(id&&!p)return;
   var v=p||{brand:'',material:'',colour:'',hex:'#2b2f33',weight:1000,spools:1,total:'',date:today(),supplier:''};
-  var brands=uniq(state.filaments.map(function(f){return f.brand;}).concat(['Generic','eSUN','Polymaker','Sunlu','Creality','Elegoo','Bambu Lab','Overture']));
+  var brands=uniq(state.filaments.map(function(f){return f.brand;}).concat(['Generic','eSUN','Polymaker','Sunlu','Creality','Elegoo','Bambu Lab','Overture','Numakers','Anycubic']));
   var mats=uniq(state.filaments.map(function(f){return f.material;}).concat(['PLA','PLA+','PETG','ABS','ASA','TPU','Nylon','PC','Silk PLA']));
   var html='<div class="dbody"><div class="part">'
     +'<div class="grid2"><div class="field"><label for="f-brand">Brand <span class="opt">optional</span></label><input id="f-brand" name="brand" list="dl-brand" autocomplete="off" value="'+esc(v.brand)+'"></div>'
