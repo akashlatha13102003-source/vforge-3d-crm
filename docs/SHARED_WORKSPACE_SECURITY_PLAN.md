@@ -186,3 +186,30 @@ Inspection of the current release-branch `index.html` confirms the browser Supab
 - The existing `makeDbBackend(db)` is a separate Firestore-style backend and does not implement Supabase workspace membership.
 
 **Decision:** do not apply a workspace RLS migration to this app version alone. A database-only change would be mismatched with the browser adapter: writes would omit the workspace ID and reads/deletes would remain user-scoped. The app adapter and SQL policies must be delivered as a coordinated release, with a fallback path and acceptance tests. Until then, keep PR #3 draft and do not merge/deploy.
+
+
+## Application adapter contract for the next implementation pass
+
+The browser adapter should not be switched to workspace mode until the database policy/helper layer is deployed and verified in a staging project. The implementation contract is:
+
+1. On successful authentication, call a single reviewed workspace bootstrap/read operation that returns the user's allowed workspace ID and role. Never trust a workspace ID or role supplied by localStorage or a form without checking membership in the database.
+2. Keep workspace context in memory only for the current session; refresh membership on session refresh and fail closed if membership is revoked or cannot be verified.
+3. Route every collection read through `workspace_id=eq.<verified workspace>` and `collection=eq.<collection>`; rely on RLS as the security boundary.
+4. On every save, send `workspace_id`, `user_id=auth.uid()`, `collection`, `id`, `data`, and `updated_at`; use `on_conflict=workspace_id,collection,id` only after the matching unique constraint exists.
+5. On every delete, filter by verified `workspace_id`, collection, and ID; RLS must independently reject Staff deletes.
+6. Do not perform a silent first-login import or automatic migration. Existing 98 records already have one workspace and one owner; keep their payloads and IDs unchanged while the adapter changes.
+7. If the membership/bootstrap endpoint fails, show a clear access error and do not fall back to user-only reads/writes under the new policy set.
+
+### Required test matrix before enabling the adapter
+
+- Admin can read, insert, update, and delete within the assigned workspace.
+- Staff can read within the assigned workspace; insert, update, and delete are rejected both in UI and by direct PostgREST calls.
+- A user from workspace B cannot read, mutate, or delete workspace A records, even if they guess record IDs.
+- Workspace ID tampering in browser requests is rejected by RLS.
+- Revoked membership stops access after the documented refresh/re-auth interval.
+- Existing owner sees the same 98 record IDs and equivalent JSON payloads after rollout.
+- Save/delete/refresh and 10-second polling behave correctly after changing the conflict target.
+- Backup export still contains all eight application collections and can be opened as valid JSON.
+- Sheets sync UI continues to describe request-queued versus receipt-confirmed states accurately.
+
+This contract intentionally does not specify final executable policy SQL yet. The safe bootstrap design depends on how the first Admin and future Staff memberships will be provisioned without exposing privileged credentials in the browser.
