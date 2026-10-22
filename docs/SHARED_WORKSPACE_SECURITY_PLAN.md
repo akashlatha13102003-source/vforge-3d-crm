@@ -85,3 +85,27 @@ The live policy names/definitions, all dependent constraints, and a safe members
 ## Current release state
 
 The candidate app and Sheets script are in a draft PR. This plan does not change the live site, Supabase database, or Google Sheets deployment.
+
+
+## Live preflight results reviewed from user-provided Supabase screenshots (2026-10-22)
+
+These are direct observations from the screenshots, not a live connector query by this repository tooling:
+
+- RLS is enabled and not forced on all three tables.
+- `vforge_records`: 98 rows, 4 permissive user-scoped policies (SELECT, INSERT, UPDATE, DELETE).
+- `vforge_workspaces`: 1 row, RLS enabled, zero policies shown.
+- `vforge_workspace_members`: 1 row, RLS enabled, zero policies shown.
+- `vforge_records` columns include nullable `workspace_id uuid`; `user_id uuid`, `collection text`, and `id text` are NOT NULL.
+- Current record primary key is `(user_id, collection, id)`; `workspace_id` references `vforge_workspaces(id)`.
+- Workspace membership primary key is `(workspace_id, user_id)`; role has a check constraint permitting `admin` and `staff`.
+- The duplicate candidate query for `(workspace_id, collection, id)` returned zero rows.
+- The visible record distribution query showed 77 filaments, 6 printers, 14 products, and 1 settings row (98 total), all under the same workspace ID.
+- Sections 1, 3, 4 and 6 have been supplied as screenshots. The section 2 screenshot showed four user-scoped policies on `vforge_records`.
+
+### Implications and remaining verification
+
+- Because RLS is enabled but the workspace and membership tables have zero policies, ordinary authenticated access to those tables is likely denied by RLS unless another privileged/bypass path is used. Verify current app login/workspace loading before any policy change.
+- Do not make `workspace_id` NOT NULL or change the primary key until checking all rows for NULL workspace IDs and reviewing all foreign-key dependencies.
+- Zero duplicate candidate keys is encouraging, but does not itself prove that changing the primary key is safe.
+- The preflight screenshot does not show grants, triggers, all indexes, function definitions, or the actual contents of each record payload. Inspect these before finalizing executable migration SQL.
+- No live database changes have been made by this branch.
