@@ -178,3 +178,9 @@ test('backup validator is read-only and checks all exported collections', () => 
   assert.match(source, /This is a read-only preview/);
   assert.match(source, /No records were imported, merged, replaced, or deleted/);
 });
+
+
+test('wastage entry rejects missing filament and amounts exceeding available stock', () => {
+  assert.match(source, /if\(!e\)return fail\(f,'Choose a valid filament/);
+  assert.match(source, /if\(g>e\.left\)return fail\(f,'Wastage exceeds available stock/);
+});
