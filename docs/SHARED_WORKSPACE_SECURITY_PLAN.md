@@ -109,3 +109,21 @@ These are direct observations from the screenshots, not a live connector query b
 - Zero duplicate candidate keys is encouraging, but does not itself prove that changing the primary key is safe.
 - The preflight screenshot does not show grants, triggers, all indexes, function definitions, or the actual contents of each record payload. Inspect these before finalizing executable migration SQL.
 - No live database changes have been made by this branch.
+
+
+## Additional live preflight findings from screenshots (2026-10-22)
+
+- Aggregate ownership query returned 98 total rows, 0 rows with NULL `workspace_id`, 1 distinct record owner, and 1 distinct workspace.
+- Per-owner distribution showed the same user/workspace pair owning all 98 rows.
+- Trigger inspection showed one trigger on `vforge_records`: `vforge_records_updated_at`, BEFORE UPDATE, calling `vforge_set_updated_at()`.
+- Table grants output showed `authenticated` has SELECT, INSERT, UPDATE, DELETE privileges on `vforge_records`; `postgres` has owner-level grants on all three tables. `service_role` has limited listed privileges on these tables. No ordinary `authenticated` table grants were shown for `vforge_workspaces` or `vforge_workspace_members`.
+- The function inventory section 10 has not yet been shown in the supplied screenshots; the definition and security settings of `vforge_set_updated_at()` have not been verified.
+- The screenshots do not visibly show index results from section 8, so the full index inventory is still pending.
+- No migration has been applied.
+
+### Next required verification before writing final migration SQL
+
+1. Review the complete index output from section 8.
+2. Review section 10 function output, including `vforge_set_updated_at()` if it appears in the query results.
+3. Check existing policies/grants for workspace and membership access and decide a secure membership-management bootstrap path. The current screenshots show zero RLS policies on those two tables and no ordinary authenticated table grants, so a role-aware browser app cannot safely rely on direct access to those tables until a reviewed policy/provisioning design exists.
+4. Build and test an additive migration plan and a rollback plan; do not apply it before Admin/Staff acceptance tests are possible.
