@@ -107,3 +107,28 @@ test('wastage reduces filament stock once and recalculates on edit/delete', () =
   context.ver++; context.statsCache = null;
   approx(context.getStats().get('brand|pla|red').left, 1000, 'stock after deleting wastage');
 });
+
+
+test('cloud record reads and deletes are explicitly scoped to the signed-in user', () => {
+  assert.match(source, /function rows\(col\)[\s\S]{0,350}user_id=eq\.'\+encodeURIComponent\(cloudSession\.user\.id\)/);
+  assert.match(source, /remove:function\(col,id\)[\s\S]{0,450}user_id=eq\.'\+encodeURIComponent\(cloudSession\.user\.id\)/);
+  assert.match(source, /user_id:cloudSession\.user\.id/);
+});
+
+test('JSON backup export includes all eight CRM collections/settings', () => {
+  const exportHandler = source.slice(source.indexOf("data-export=\"json\"") - 100, source.indexOf("data-export=\"json\"") + 1200);
+  for (const key of ['filaments','printers','products','customers','sales','wastage','transfers','settings']) {
+    assert.match(exportHandler, new RegExp(key + ':state\\.' + key));
+  }
+});
+
+test('Google Sheets payload includes all report groups supported by the CRM', () => {
+  const start = source.indexOf('function sheetsPayload(){');
+  assert.notEqual(start, -1, 'sheetsPayload must exist');
+  const end = source.indexOf('function testGoogleSheets()', start);
+  assert.notEqual(end, -1, 'sheetsPayload must end before testGoogleSheets');
+  const payload = source.slice(start, end);
+  for (const key of ['filament','products','sales','customers','wastage','branchTransfers']) {
+    assert.ok(payload.includes(key + ':'), 'Sheets payload must include ' + key);
+  }
+});
