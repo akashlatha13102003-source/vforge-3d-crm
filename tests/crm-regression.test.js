@@ -145,5 +145,5 @@ test('Supabase preflight remains read-only and covers required security metadata
     'having count(*) > 1',
     'relrowsecurity'
   ]) assert.ok(executable.includes(fragment), 'preflight SQL must include ' + fragment);
-  assert.doesNotMatch(executable, /\\b(insert|update|delete|alter|drop|create|truncate|grant|revoke)\\b/, 'preflight SQL must not mutate database state');
+  assert.doesNotMatch(executable, /\b(insert|update|delete|alter|drop|create|truncate|grant|revoke)\b/, 'preflight SQL must not mutate database state');
 });
