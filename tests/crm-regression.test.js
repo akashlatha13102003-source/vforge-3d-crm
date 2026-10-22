@@ -77,6 +77,20 @@ test('legacy single-product sale still calculates total and taxable value', () =
   approx(context.saleProfit(sale), 120, 'legacy profit');
 });
 
+test('quantity made deducts recipe stock once, with only excess sales deducting extra', () => {
+  context.state = {
+    filaments: [{ id: 'purchase-1', key: 'brand|pla|red', brand: 'Brand', material: 'PLA', colour: 'Red', hex: '#ff0000', weight: 1000, spools: 1, total: 2000, date: '2026-01-01', createdAt: '2026-01-01T00:00:00Z' }],
+    products: [{ id: 'p1', name: 'Test product', quantityMade: 3, lines: [{ key: 'brand|pla|red', grams: 100 }] }],
+    sales: [{ id: 's1', productId: 'p1', qty: 2, unitPrice: 100, unitCost: 10 }],
+    wastage: [], settings: {}
+  };
+  context.ver++; context.statsCache = null;
+  approx(context.getStats().get('brand|pla|red').left, 700, 'stock after 3 made and 2 sold');
+  context.state.sales[0].qty = 4;
+  context.ver++; context.statsCache = null;
+  approx(context.getStats().get('brand|pla|red').left, 600, 'stock after 3 made and 4 sold');
+});
+
 test('wastage reduces filament stock once and recalculates on edit/delete', () => {
   context.state = {
     filaments: [{ id: 'purchase-1', key: 'brand|pla|red', brand: 'Brand', material: 'PLA', colour: 'Red', hex: '#ff0000', weight: 1000, spools: 1, total: 2000, date: '2026-01-01', createdAt: '2026-01-01T00:00:00Z' }],
