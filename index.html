@@ -221,7 +221,7 @@ tr.click:hover td{background:color-mix(in srgb,var(--surface) 70%,transparent)}
 'use strict';
 
 /* ---------- helpers ---------- */
-var COLS=['filaments','printers','products','customers','sales','settings'];
+var COLS=['filaments','printers','products','customers','sales','wastage','transfers','settings'];
 function $(s,r){return (r||document).querySelector(s);}
 function $$(s,r){return Array.prototype.slice.call((r||document).querySelectorAll(s));}
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
@@ -242,6 +242,8 @@ function guessHex(name){var w=String(name).toLowerCase().split(/[^a-z]+/);for(va
 var ICONS={
   overview:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V11M10 20V4M16 20v-6M21 20H3"/></svg>',
   filament:'<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/><path d="M12 3v4M12 17v4M3 12h4M17 12h4"/></svg>',
+  wastage:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3c3 4 6 7 6 11a6 6 0 0 1-12 0c0-4 3-7 6-11z"/></svg>',
+  transfers:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h15M15 3l4 4-4 4M20 17H5m4-4-4 4 4 4"/></svg>',
   products:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/></svg>',
   sales:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h14v18l-3.5-2-3.5 2-3.5-2L5 21z"/><path d="M9 8h6M9 12h6"/></svg>',
   customers:'<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-7 8-7s8 3 8 7"/></svg>',
@@ -252,7 +254,7 @@ var ICONS={
 
 /* ---------- state ---------- */
 var DEFAULT_RATE=8;
-var state={filaments:[],printers:[],products:[],customers:[],sales:[],settings:{currency:'INR',lowStock:200,powerRate:DEFAULT_RATE,googleSheetsUrl:'',lastSheetsSync:''},
+var state={filaments:[],printers:[],products:[],customers:[],sales:[],wastage:[],transfers:[],settings:{currency:'INR',lowStock:200,powerRate:DEFAULT_RATE,googleSheetsUrl:'',lastSheetsSync:''},
   loaded:{},ready:false,view:'overview',period:'30',q:'',storage:'workspace'};
 var ver=0,statsVer=-1,statsCache=null,backend=null,dlCap=null;
 
@@ -482,17 +484,19 @@ function syncStateAfterSave(col){
 }
 function save(col,id,data){
   return Promise.resolve().then(function(){return backend.save(col,id,data);}).then(function(){
-    if(['filaments','products','sales','customers'].indexOf(col)>=0)return syncStateAfterSave(col);
+    if(COLS.indexOf(col)>=0&&col!=='settings')return syncStateAfterSave(col);
     return true;
   },function(e){toast(errMsg(e),true);return false;});
 }
 function remove(col,id){
   return Promise.resolve().then(function(){return backend.remove(col,id);}).then(function(){
-    if(['filaments','products','sales','customers'].indexOf(col)>=0)return syncStateAfterSave(col);
+    if(COLS.indexOf(col)>=0&&col!=='settings')return syncStateAfterSave(col);
     return true;
   },function(e){toast(errMsg(e),true);return false;});
 }
 function migrateLocalToCloud(){
+  return Promise.reject(new Error('Automatic local-to-cloud migration is disabled for data safety. Use an explicit reviewed import with a backup.'));
+  /* Disabled legacy implementation retained below for reference only.
   var local=makeLocalBackend();
   var collections=COLS.slice();
   var writes=[];
@@ -501,6 +505,7 @@ function migrateLocalToCloud(){
     docs.forEach(function(d){writes.push(backend.save(col,d.id,d.data));});
   });
   return Promise.all(writes);
+  */
 }
 function stopCloudPolling(){cloudPollers.forEach(function(x){clearInterval(x);});cloudPollers=[];}
 function connectCloudFromForm(form,signup){
@@ -519,14 +524,16 @@ function connectCloudFromForm(form,signup){
     }
     cloudSession=data;
     var cfg=getCloudConfig();cfg.refreshToken=data.refresh_token;cfg.userId=data.user&&data.user.id;setCloudConfig(cfg);
-    var oldBackend=backend;
+    // SAFETY: never auto-upload this browser's local data into the signed-in
+    // cloud account. The old behavior could overwrite matching IDs or mix one
+    // staff member's local records into another account. Connect first and
+    // load the cloud as the source of truth; any local import must be a separate,
+    // explicit, backed-up operation with a preview and conflict report.
     backend=makeSupabaseBackend();
     state.storage='cloud';
     renderNotice();
-    return migrateLocalToCloud().then(function(){
-      return refresh(false);
-    }).then(function(){
-      toast('✓ VFORGE cloud database connected');
+    return refresh(false).then(function(){
+      toast('✓ Connected to cloud. Browser-local records were not imported.');
       closeDrawer();
     });
   }).catch(function(e){toast('Cloud connection failed: '+errMsg(e),true);});
@@ -564,34 +571,18 @@ function getStats(){
     });
   });
 
-  // If more pieces are sold than were recorded as made, consume the extra
-  // pieces from filament using the current product recipe. Legacy sales that
-  // have no production quantity continue to use their saved usage snapshot.
+  // Sales can contain multiple products. Preserve legacy single-product records and
+  // apply the same production-vs-sale inventory rule to each line item.
   var soldByProduct=new Map();
-  state.sales.forEach(function(s){
-    var pid=s.productId;
-    soldByProduct.set(pid,(soldByProduct.get(pid)||0)+Math.max(0,num(s.qty)));
-  });
-  state.sales.forEach(function(s){
-    var soldProduct=state.products.find(function(pr){return pr.id===s.productId;});
-    if(!soldProduct){
-      (s.usage||[]).forEach(function(u){var e=map.get(u.key);if(e)e.used+=num(u.grams)*num(s.qty);});
-      return;
-    }
-    var madeQty=Math.max(0,num(soldProduct.quantityMade));
-    if(madeQty<=0){
-      (s.usage||[]).forEach(function(u){var e=map.get(u.key);if(e)e.used+=num(u.grams)*num(s.qty);});
-    }
-  });
-  state.products.forEach(function(pr){
-    var madeQty=Math.max(0,num(pr.quantityMade));
-    var soldQty=soldByProduct.get(pr.id)||0;
-    var extraQty=Math.max(0,soldQty-madeQty);
-    if(extraQty>0)(pr.lines||[]).forEach(function(l){
-      var e=map.get(l.key);if(e)e.saleExtraUsed+=num(l.grams)*extraQty;
-    });
-  });
+  state.sales.forEach(function(s){saleLines(s).forEach(function(l){var pid=l.productId||s.productId;if(!pid)return;soldByProduct.set(pid,(soldByProduct.get(pid)||0)+Math.max(0,num(l.qty)));});});
+  state.sales.forEach(function(s){saleLines(s).forEach(function(l){
+    var pid=l.productId||s.productId,prod=state.products.find(function(pr){return pr.id===pid;});
+    if(!prod){(l.usage||s.usage||[]).forEach(function(u){var e=map.get(u.key);if(e)e.used+=num(u.grams)*num(l.qty||s.qty);});return;}
+    if(Math.max(0,num(prod.quantityMade))<=0){(l.usage||[]).forEach(function(u){var e=map.get(u.key);if(e)e.used+=num(u.grams)*num(l.qty);});}
+  });});
+  state.products.forEach(function(pr){var madeQty=Math.max(0,num(pr.quantityMade)),soldQty=soldByProduct.get(pr.id)||0,extraQty=Math.max(0,soldQty-madeQty);if(extraQty>0)(pr.lines||[]).forEach(function(l){var e=map.get(l.key);if(e)e.saleExtraUsed+=num(l.grams)*extraQty;});});
 
+  state.wastage.forEach(function(w){var e=map.get(w.filamentKey);if(e)e.wastageUsed=(e.wastageUsed||0)+Math.max(0,num(w.grams));});
   state.products.forEach(function(pr){
     (pr.lines||[]).forEach(function(l){
       var e=map.get(l.key);if(!e)return;
@@ -600,7 +591,7 @@ function getStats(){
       if(x)x.grams+=num(l.grams);else e.prods.push({id:pr.id,name:pr.name||'Untitled',grams:num(l.grams)});
     });
   });
-  map.forEach(function(e){e.actualUsed=e.productionUsed+e.used+e.saleExtraUsed;e.left=e.bought-e.actualUsed;e.cpg=e.bought>0?e.paid/e.bought:0;e.name=fname(e);});
+  map.forEach(function(e){e.wastageUsed=e.wastageUsed||0;e.actualUsed=e.productionUsed+e.used+e.saleExtraUsed+e.wastageUsed;e.left=e.bought-e.actualUsed;e.cpg=e.bought>0?e.paid/e.bought:0;e.name=fname(e);});
   statsCache=map;statsVer=ver;return map;
 }
 function powerOf(printerId,hours){
@@ -619,10 +610,25 @@ function fmtHours(h){
   var t=Math.round(h*60),hh=Math.floor(t/60),mm=t%60;
   return (hh?hh+' h':'')+(hh&&mm?' ':'')+(mm?mm+' min':'');
 }
-function saleRev(s){return num(s.unitPrice)*num(s.qty);}
-function saleCost(s){return num(s.unitCost)*num(s.qty);}
+function saleLines(s){
+  if(Array.isArray(s.lineItems)&&s.lineItems.length)return s.lineItems;
+  return [{productId:s.productId,productName:s.productName,qty:num(s.qty),unitPrice:num(s.unitPrice),unitCost:num(s.unitCost),usage:s.usage||[],printerId:s.printerId||'',hours:num(s.hours),gstRate:s.gstRate==null?null:s.gstRate,priceMode:s.priceMode||'exclusive',taxableUnit:s.taxableUnit,gstUnit:s.gstUnit,finalUnit:s.finalUnit}];
+}
+function saleRev(s){return Math.round(saleLines(s).reduce(function(t,l){return t+num(l.finalUnit!=null?l.finalUnit:(num(l.unitPrice)*(l.priceMode==='inclusive'?1:1+num(l.gstRate)/100)))*num(l.qty);},0)*100)/100;}
+function saleTax(s){return Math.round(saleLines(s).reduce(function(t,l){return t+num(l.gstUnit)*num(l.qty);},0)*100)/100;}
+function saleTaxable(s){return Math.round(saleLines(s).reduce(function(t,l){return t+num(l.taxableUnit!=null?l.taxableUnit:(l.priceMode==='inclusive'?num(l.unitPrice)/(1+num(l.gstRate)/100):num(l.unitPrice)))*num(l.qty);},0)*100)/100;}
+function saleCost(s){return saleLines(s).reduce(function(t,l){return t+num(l.unitCost)*num(l.qty);},0);}
+// Profit excludes collected GST: GST is a liability, not operating revenue.
+function saleProfit(s){return Math.round((saleTaxable(s)-saleCost(s))*100)/100;}
+function productGst(prod,price){
+  if(!prod||prod.gstRate==null||prod.gstRate==='')return {rate:null,taxable:null,gst:null,total:null};
+  var rate=num(prod.gstRate),p=num(price),inclusive=prod.priceMode==='inclusive';
+  var taxable=inclusive?p/(1+rate/100):p;
+  var gst=inclusive?p-taxable:p*rate/100;
+  return {rate:rate,taxable:Math.round(taxable*100)/100,gst:Math.round(gst*100)/100,total:Math.round((inclusive?p:p+gst)*100)/100};
+}
 function custName(s){var c=state.customers.find(function(x){return x.id===s.customerId;});return (c&&c.name)||s.customerName||'Unknown customer';}
-function prodName(s){var p=state.products.find(function(x){return x.id===s.productId;});return (p&&p.name)||s.productName||'Deleted product';}
+function prodName(s){var lines=saleLines(s);if(lines.length>1)return lines.map(function(l){return (state.products.find(function(x){return x.id===l.productId;})||{}).name||l.productName||'Deleted product';}).join(', ');var p=state.products.find(function(x){return x.id===s.productId;});return (p&&p.name)||s.productName||'Deleted product';}
 function periodSales(){
   if(state.period==='all')return state.sales;
   var c=new Date();c.setDate(c.getDate()-30);var cut=ymd(c);
@@ -640,7 +646,7 @@ function toast(msg,bad){
 }
 
 /* ---------- rendering: shell ---------- */
-var NAV=[['overview','Overview','overview',''],['printers','Printers','printers',''],['filament','Filament','filament','1'],['products','Products','products','2'],['sales','Sales','sales','3'],['customers','Customers','customers',''],['reports','Reports','overview','']];
+var NAV=[['overview','Overview','overview',''],['printers','Printers','printers',''],['filament','Filament','filament','1'],['products','Products','products','2'],['sales','Sales','sales','3'],['customers','Customers','customers',''],['wastage','Wastage','wastage',''],['transfers','Branch Transfers','transfers',''],['reports','Reports','overview','']];
 function renderNav(){
   $('#nav').innerHTML=NAV.map(function(n){
     return '<button data-view="'+n[0]+'"'+(state.view===n[0]?' aria-current="page"':'')+'>'+ICONS[n[2]]+'<span>'+n[1]+'</span>'+(n[3]?'<span class="step" aria-hidden="true">'+n[3]+'</span>':'')+'</button>';
@@ -655,13 +661,15 @@ function renderNotice(){
 }
 function searchBox(ph){return '<label class="search"><span class="sr">Search</span><input id="q" type="search" placeholder="'+esc(ph)+'" value="'+esc(state.q)+'" autocomplete="off"></label>';}
 function renderToolbar(){
-  var v=state.view,T={overview:'Overview',printers:'Printers',filament:'Filament',products:'Products',sales:'Sales',customers:'Customers',reports:'Reports'},right='';
+  var v=state.view,T={overview:'Overview',printers:'Printers',filament:'Filament',products:'Products',sales:'Sales',customers:'Customers',reports:'Reports',wastage:'Wastage',transfers:'Branch Transfers'},right='';
   if(v==='overview')right='<div class="seg" role="group" aria-label="Period"><button data-act="period:30" aria-pressed="'+(state.period==='30')+'">Last 30 days</button><button data-act="period:all" aria-pressed="'+(state.period==='all')+'">All time</button></div><button class="btn" data-act="settings">Settings</button>';
   if(v==='printers')right='<button class="btn" data-act="settings">Electricity price</button><button class="btn primary" data-act="new-printer">Add printer</button>';
   if(v==='filament')right='<button class="btn primary" data-act="new-purchase">Log purchase</button>';
   if(v==='products')right=searchBox('Search products')+'<button class="btn primary" data-act="new-product">New product</button>';
   if(v==='sales')right=searchBox('Search sales')+'<button class="btn primary" data-act="new-sale">Record sale</button>';
   if(v==='customers')right=searchBox('Search customers')+'<button class="btn primary" data-act="new-customer">Add customer</button>';
+  if(v==='wastage')right='<button class="btn primary" data-act="new-wastage">Log wastage</button>';
+  if(v==='transfers')right='<button class="btn primary" data-act="new-transfer">Record transfer</button>'; 
   if(v==='reports')right='<button class="btn" data-act="test-sheets">Test Google Sheets</button><button class="btn primary" data-act="sync-sheets">Sync to Google Sheets</button><button class="btn" data-act="export-report-csv">Export reports CSV</button>';
   var refresh='<span class="small muted hide-sm" id="stamp"></span><button class="btn" id="refresh-btn" data-act="refresh" title="Load the latest data">'+ICONS.refresh+'<span>Refresh</span></button>';
   $('#toolbar').innerHTML='<h1>'+T[v]+'</h1><div class="bar-right">'+refresh+right+'</div>';
@@ -670,7 +678,7 @@ function renderToolbar(){
 function renderContent(){
   var c=$('#content');
   if(!state.ready){c.innerHTML='<p class="muted">Loading your workspace\u2026</p>';return;}
-  var fn={overview:vOverview,printers:vPrinters,filament:vFilament,products:vProducts,sales:vSales,customers:vCustomers,reports:vReports}[state.view];
+  var fn={overview:vOverview,printers:vPrinters,filament:vFilament,products:vProducts,sales:vSales,customers:vCustomers,reports:vReports,wastage:vWastage,transfers:vTransfers}[state.view];
   c.innerHTML=fn();
 }
 function render(){renderNav();renderNotice();renderToolbar();renderContent();}
@@ -706,20 +714,20 @@ function vOverview(){
   var rows=Array.from(S.values()).sort(function(a,b){return (a.bought?a.left/a.bought:0)-(b.bought?b.left/b.bought:0);});
   var stock=rows.length?'<section class="sec"><div class="sec-head"><h2>Filament on hand</h2><button class="linkish" data-view="filament">Open filament</button></div>'+rows.slice(0,6).map(function(e){return spoolRow(e,low);}).join('')+'</section>':'';
   if(!state.sales.length)return vStart()+stock;
-  var list=periodSales(),rev=sum(list,saleRev),cost=sum(list,saleCost),profit=rev-cost;
+  var list=periodSales(),rev=sum(list,saleRev),taxableRev=sum(list,saleTaxable),cost=sum(list,saleCost),profit=sum(list,saleProfit);
   var pend=sum(list.filter(function(s){return s.status==='pending';}),saleRev);
   var pendN=list.filter(function(s){return s.status==='pending';}).length;
   var figs='<div class="figures">'
     +'<div class="fig"><span class="fig-l">Sales</span><strong class="fig-v">'+money(rev)+'</strong><span class="fig-s">'+list.length+(list.length===1?' order':' orders')+'</span></div>'
     +'<div class="fig"><span class="fig-l">Cost of making</span><strong class="fig-v">'+money(cost)+'</strong><span class="fig-s">filament, power and extras</span></div>'
-    +'<div class="fig"><span class="fig-l">Profit</span><strong class="fig-v'+(profit<0?' neg':'')+'">'+signed(profit)+'</strong><span class="fig-s">'+(rev>0?pct(profit/rev*100)+' margin':'no sales yet')+'</span></div>'
+    +'<div class="fig"><span class="fig-l">Profit</span><strong class="fig-v'+(profit<0?' neg':'')+'">'+signed(profit)+'</strong><span class="fig-s">'+(taxableRev>0?pct(profit/taxableRev*100)+' margin':'no sales yet')+'</span></div>'
     +'<div class="fig"><span class="fig-l">Awaiting payment</span><strong class="fig-v">'+money(pend)+'</strong><span class="fig-s">'+pendN+(pendN===1?' order':' orders')+'</span></div></div>';
   var agg=new Map();
-  list.forEach(function(s){var k=s.productId||s.productName,e=agg.get(k)||{name:prodName(s),units:0,profit:0};e.units+=num(s.qty);e.profit+=saleRev(s)-saleCost(s);agg.set(k,e);});
+  list.forEach(function(s){saleLines(s).forEach(function(l){var k=l.productId||l.productName,e=agg.get(k)||{name:l.productName||prodName(s),units:0,profit:0};e.units+=num(l.qty);e.profit+=num(l.taxableUnit!=null?l.taxableUnit:(l.priceMode==='inclusive'?num(l.unitPrice)/(1+num(l.gstRate||0)/100):num(l.unitPrice)))*num(l.qty)-num(l.unitCost)*num(l.qty);agg.set(k,e);});});
   var top=Array.from(agg.values()).sort(function(a,b){return b.profit-a.profit;}).slice(0,5);
   var recent=sortedSales(list).slice(0,6);
   var recentHtml=recent.length?'<ul class="list">'+recent.map(function(s){
-    var pr=saleRev(s)-saleCost(s);
+    var pr=saleProfit(s);
     return '<li class="row"><div><button class="linkish" data-open="sale:'+esc(s.id)+'">'+esc(custName(s))+'</button><span class="small muted">'+esc(prodName(s))+' \u00d7 '+num(s.qty)+', '+esc(fmtDate(s.date))+'</span></div><div class="row-r"><strong>'+money(saleRev(s))+'</strong><span class="small '+(pr<0?'neg':'muted')+'">profit '+signed(pr)+'</span></div></li>';
   }).join('')+'</ul>':'<p class="muted">No sales in this period.</p>';
   var topHtml=top.length?'<ul class="list">'+top.map(function(t){
@@ -731,7 +739,7 @@ function vPrinters(){
   var rate='<p class="muted" style="margin:0 0 22px">Electricity is priced at <strong>'+money(state.settings.powerRate,2)+'</strong> per unit (kWh). Each product\u2019s print time and its printer\u2019s watts turn that into a power cost.</p>';
   if(!state.printers.length)return rate+empty('No printers yet','Add each printer with the watts it draws while printing. Then any product with a print time gets its electricity cost worked out.','new-printer','Add a printer');
   var hours={};
-  state.sales.forEach(function(s){if(s.printerId)hours[s.printerId]=(hours[s.printerId]||0)+num(s.hours)*num(s.qty);});
+  state.sales.forEach(function(s){saleLines(s).forEach(function(l){var pid=l.printerId||s.printerId;if(pid)hours[pid]=(hours[pid]||0)+num(l.hours)*num(l.qty);});});
   var body=state.printers.slice().sort(byName).map(function(p){
     var n=state.products.filter(function(x){return x.printerId===p.id;}).length,h=hours[p.id]||0;
     return '<tr class="click" data-open="printer:'+esc(p.id)+'"><td><button class="linkish" data-open="printer:'+esc(p.id)+'">'+esc(p.name)+'</button>'+(p.notes?'<div class="small muted">'+esc(p.notes)+'</div>':'')+'</td><td class="num">'+num(p.watts)+' W</td><td class="num hide-sm">'+n+'</td><td class="num hide-sm">'+(fmtHours(h)||'0 h')+'</td><td class="num hide-sm">'+(Math.round(h*num(p.watts))/1000).toLocaleString(loc(),{maximumFractionDigits:1})+' kWh</td><td class="num">'+money(num(p.watts)/1000*num(state.settings.powerRate),2)+'</td></tr>';
@@ -756,9 +764,9 @@ function vProducts(){
   var list=state.products.filter(function(p){return !q||(p.name+' '+(p.category||'')+' '+(p.description||'')).toLowerCase().indexOf(q)>=0;}).sort(byName);
   if(!list.length)return '<p class="muted">No products match \u201c'+esc(state.q)+'\u201d.</p>';
   var body=list.map(function(p){
-    var c=productCost(p,S),m=num(p.price)-c.total;
+    var c=productCost(p,S),pg=productGst(p,p.price),sellNet=p.price==null?null:(p.gstRate==null?num(p.price):pg.taxable),m=sellNet==null||!p.lines||!p.lines.length?null:sellNet-c.total;
     var dots=(p.lines||[]).map(function(l){var e=S.get(l.key);return '<span class="dot" title="'+esc(l.name||'')+'" style="background:'+safeHex(e?e.hex:'#8a8f94')+'"></span>';}).join('');
-    return '<tr class="click" data-open="product:'+esc(p.id)+'"><td><button class="linkish" data-open="product:'+esc(p.id)+'">'+esc(p.name)+'</button>'+(function(){var pw=powerOf(p.printerId,p.printHours),m=[];if(p.category)m.push(p.category);if(num(p.printHours)>0)m.push(fmtHours(p.printHours)+(pw.printer?' on '+pw.printer.name:''));return m.length?'<div class="small muted">'+esc(m.join(', '))+'</div>':'';})()+'</td><td class="hide-sm"><span class="dots">'+dots+'</span></td><td class="num hide-sm">'+fmtG(c.grams)+'</td><td class="num">'+money(c.total,2)+'</td><td class="num">'+money(p.price)+'</td><td class="num"><span class="'+(m<0?'neg':'')+'">'+signed(m,2)+'</span>'+(num(p.price)>0?'<div class="small muted">'+pct(m/num(p.price)*100)+'</div>':'')+'</td></tr>';
+    return '<tr class="click" data-open="product:'+esc(p.id)+'"><td><button class="linkish" data-open="product:'+esc(p.id)+'">'+esc(p.name)+'</button>'+(function(){var pw=powerOf(p.printerId,p.printHours),m=[];if(p.category)m.push(p.category);if(num(p.printHours)>0)m.push(fmtHours(p.printHours)+(pw.printer?' on '+pw.printer.name:''));return m.length?'<div class="small muted">'+esc(m.join(', '))+'</div>':'';})()+'</td><td class="hide-sm"><span class="dots">'+dots+'</span></td><td class="num hide-sm">'+fmtG(c.grams)+'</td><td class="num">'+(p.lines&&p.lines.length?money(c.total,2):'N/A')+'</td><td class="num">'+(p.price==null?'N/A':money(p.price))+'</td><td class="num"><span class="'+(m!==null&&m<0?'neg':'')+'">'+(m===null?'N/A':signed(m,2))+'</span>'+(sellNet!==null&&sellNet>0&&m!==null?'<div class="small muted">'+pct(m/sellNet*100)+' margin</div>':'')+'</td></tr>';
   }).join('');
   return '<div style="overflow-x:auto"><table><thead><tr><th>Product</th><th class="hide-sm">Filament</th><th class="num hide-sm">Grams</th><th class="num">Cost</th><th class="num">Listed price</th><th class="num">Margin</th></tr></thead><tbody>'+body+'</tbody></table></div>';
 }
@@ -768,11 +776,32 @@ function vSales(){
   var list=sortedSales(state.sales).filter(function(s){return !q||(custName(s)+' '+prodName(s)+' '+(s.notes||'')).toLowerCase().indexOf(q)>=0;});
   if(!list.length)return '<p class="muted">No sales match \u201c'+esc(state.q)+'\u201d.</p>';
   var body=list.map(function(s){
-    var pr=saleRev(s)-saleCost(s);
+    var pr=saleProfit(s);
     return '<tr class="click" data-open="sale:'+esc(s.id)+'"><td class="hide-sm">'+esc(fmtDate(s.date))+'</td><td><button class="linkish" data-open="sale:'+esc(s.id)+'">'+esc(custName(s))+'</button><div class="small muted only-sm">'+esc(prodName(s))+' \u00d7 '+num(s.qty)+', '+esc(fmtDate(s.date))+'</div></td><td class="hide-sm">'+esc(prodName(s))+'</td><td class="num hide-sm">'+num(s.qty)+'</td><td class="num">'+money(saleRev(s))+'</td><td class="num hide-sm"><span class="'+(pr<0?'neg':'')+'">'+signed(pr)+'</span></td><td><span class="tag '+(s.status==='pending'?'pending':'paid')+'">'+(s.status==='pending'?'Pending':'Paid')+'</span></td></tr>';
   }).join('');
   return '<div style="overflow-x:auto"><table><thead><tr><th class="hide-sm">Date</th><th>Customer</th><th class="hide-sm">Product</th><th class="num hide-sm">Qty</th><th class="num">Total</th><th class="num hide-sm">Profit</th><th>Payment</th></tr></thead><tbody>'+body+'</tbody></table></div>';
 }
+
+function vWastage(){
+ var list=state.wastage.slice().sort(function(a,b){return (b.date||'').localeCompare(a.date||'');});
+ if(!list.length)return empty('No wastage recorded','Log damaged, purged or otherwise wasted filament. Wastage reduces available filament stock.','new-wastage','Log wastage');
+ return '<div style="overflow-x:auto"><table><thead><tr><th>Date</th><th>Filament</th><th class="num">Grams</th><th>Reason</th><th>Notes</th><th></th></tr></thead><tbody>'+list.map(function(w){var S=getStats(),e=S.get(w.filamentKey);return '<tr><td>'+esc(fmtDate(w.date))+'</td><td>'+esc(e?e.name:(w.filamentName||w.filamentKey))+'</td><td class="num">'+fmtG(w.grams)+'</td><td>'+esc(w.reason||'')+'</td><td>'+esc(w.notes||'')+'</td><td><button class="btn danger" data-act="delete-wastage:'+esc(w.id)+'">Delete</button></td></tr>';}).join('')+'</tbody></table></div>';
+}
+function vTransfers(){
+ var list=state.transfers.slice().sort(function(a,b){return (b.date||'').localeCompare(a.date||'');});
+ if(!list.length)return empty('No branch transfers yet','Record products moved to a branch. Transfers are tracked separately and do not count as external sales or reduce finished-product stock.','new-transfer','Record transfer');
+ return '<div style="overflow-x:auto"><table><thead><tr><th>Date</th><th>Branch</th><th>Product</th><th class="num">Qty</th><th class="num">Price</th><th>Notes</th><th></th></tr></thead><tbody>'+list.map(function(t){return '<tr><td>'+esc(fmtDate(t.date))+'</td><td>'+esc(t.branch)+'</td><td>'+esc(t.productName)+'</td><td class="num">'+Math.max(1,num(t.quantity||1))+'</td><td class="num">'+(t.price==null?'N/A':money(t.price))+'</td><td>'+esc(t.notes||'')+'</td><td><button class="btn danger" data-act="delete-transfer:'+esc(t.id)+'">Delete</button></td></tr>';}).join('')+'</tbody></table></div>';
+}
+function openWastage(){
+ var opts=Array.from(getStats().values()).sort(byName);if(!opts.length){toast('Log a filament purchase before recording wastage.',true);return;}
+ var html='<div class="dbody"><div class="field"><label>Date</label><input name="date" type="date" value="'+today()+'"></div><div class="field"><label>Filament</label><select name="filament">'+opts.map(function(e){return '<option value="'+esc(e.key)+'">'+esc(e.name)+' — '+fmtG(e.left)+' left</option>';}).join('')+'</select></div><div class="field"><label>Wasted grams</label><input name="grams" type="number" min="0.01" step="any" required></div><div class="field"><label>Reason</label><select name="reason"><option>Print failure</option><option>Purge / colour change</option><option>Test print</option><option>Damaged filament</option><option>Other</option></select></div><div class="field"><label>Notes (optional)</label><textarea name="notes"></textarea></div></div>'+foot('',false,'Save wastage');
+ var f=openDrawer('Log filament wastage',html);wireSubmit(f,function(){var key=ctl(f,'filament').value,e=getStats().get(key),g=num(ctl(f,'grams').value);if(!(g>0))return fail(f,'Enter grams greater than zero.');var d={date:ctl(f,'date').value||today(),filamentKey:key,filamentName:e?e.name:key,grams:g,reason:ctl(f,'reason').value,notes:ctl(f,'notes').value.trim(),createdAt:new Date().toISOString()};return save('wastage',backend.newId('wastage'),d).then(function(ok){if(ok)toast('Wastage recorded');return ok;});});
+}
+function openTransfer(){
+ var opts=state.products.slice().sort(byName);var html='<div class="dbody"><div class="grid2"><div class="field"><label>Date</label><input name="date" type="date" value="'+today()+'"></div><div class="field"><label>Branch name</label><input name="branch" placeholder="Enter branch name" required></div></div><div class="field"><label>Product</label><select name="product" required><option value="">Choose product</option>'+opts.map(function(p){return '<option value="'+esc(p.id)+'">'+esc(p.name)+'</option>';}).join('')+'</select></div><div class="grid2"><div class="field"><label>Quantity</label><input name="quantity" type="number" min="1" step="1" value="1" required></div><div class="field"><label>Transfer price (optional)</label><input name="price" type="number" min="0" step="any" placeholder="Leave blank if unknown"></div></div><div class="field"><label>Notes (optional)</label><textarea name="notes"></textarea></div><p class="small muted">Transfers are not external sales and do not deduct finished-product stock.</p></div>'+foot('',false,'Save transfer');
+ var f=openDrawer('Record branch transfer',html);wireSubmit(f,function(){var pid=ctl(f,'product').value,pr=state.products.find(function(p){return p.id===pid;});if(!pr)return fail(f,'Choose a product.');var branch=ctl(f,'branch').value.trim();if(!branch)return fail(f,'Enter a branch name.');var d={date:ctl(f,'date').value||today(),branch:branch,productId:pid,productName:pr.name,quantity:Math.max(1,Math.floor(num(ctl(f,'quantity').value||1))),price:ctl(f,'price').value.trim()===''?null:num(ctl(f,'price').value),notes:ctl(f,'notes').value.trim(),createdAt:new Date().toISOString()};return save('transfers',backend.newId('transfers'),d).then(function(ok){if(ok)toast('Branch transfer recorded');return ok;});});
+}
+
 function custStats(){
   var m=new Map();
   state.customers.forEach(function(c){m.set(c.id,{c:c,orders:0,spent:0,last:''});});
@@ -835,15 +864,19 @@ function ctl(form,n){return form.elements.namedItem(n);}
 function openPurchase(id){
   var p=id?state.filaments.find(function(x){return x.id===id;}):null;
   if(id&&!p)return;
-  var v=p||{brand:'',material:'',colour:'',hex:'#2b2f33',weight:1000,spools:1,total:'',date:today(),supplier:''};
+  var v=p||{brand:'',material:'',colour:'',hex:'#2b2f33',filamentType:'Single Colour',colours:[],weight:1000,spools:1,total:'',date:today(),supplier:''};
+  var savedColours=Array.isArray(v.colours)?v.colours:[];
+  var extraColourText=savedColours.filter(function(c){return c&&((c.name||'')!==String(v.colour||''));}).map(function(c){return String(c.name||'')+', '+safeHex(c.hex);}).join('\\n');
   var brands=uniq(state.filaments.map(function(f){return f.brand;}).concat(['Generic','eSUN','Polymaker','Sunlu','Creality','Elegoo','Bambu Lab','Overture','Numakers','Anycubic']));
   var mats=uniq(state.filaments.map(function(f){return f.material;}).concat(['PLA','PLA+','PETG','ABS','ASA','TPU','Nylon','PC','Silk PLA']));
   var html='<div class="dbody"><div class="part">'
     +'<div class="grid2"><div class="field"><label for="f-brand">Brand <span class="opt">optional</span></label><input id="f-brand" name="brand" list="dl-brand" autocomplete="off" value="'+esc(v.brand)+'"></div>'
     +'<div class="field"><label for="f-material">Material</label><input id="f-material" name="material" list="dl-mat" autocomplete="off" placeholder="PLA, PETG\u2026" value="'+esc(v.material)+'"></div></div>'
-    +'<div class="grid2 keep"><div class="field"><label for="f-colour">Colour name</label><input id="f-colour" name="colour" autocomplete="off" placeholder="Matte black" value="'+esc(v.colour)+'"></div>'
-    +'<div class="field"><label for="f-hex">Swatch</label><input id="f-hex" name="hex" type="color" value="'+safeHex(v.hex)+'"></div></div>'
-    +(p?'<p class="small muted" style="margin:-6px 0 0">Changing the brand, material or colour makes this a different filament in your stock.</p>':'')
+    +'<div class="field"><label for="f-type">Filament colour type</label><select id="f-type" name="filamentType"><option'+((v.filamentType||'Single Colour')==='Single Colour'?' selected':'')+'>Single Colour</option><option'+(v.filamentType==='Dual Colour'?' selected':'')+'>Dual Colour</option><option'+(v.filamentType==='Tri Colour'?' selected':'')+'>Tri Colour</option><option'+(v.filamentType==='Multi Colour'?' selected':'')+'>Multi Colour</option></select></div>'
+    +'<div class="grid2 keep"><div class="field"><label for="f-colour">Primary colour name</label><input id="f-colour" name="colour" autocomplete="off" placeholder="Matte black" value="'+esc(v.colour)+'"></div>'
+    +'<div class="field"><label for="f-hex">Primary colour swatch</label><input id="f-hex" name="hex" type="color" value="'+safeHex(v.hex)+'"></div></div>'
+    +'<div class="field"><label for="f-extra-colours">Additional colours <span class="opt">optional</span></label><textarea id="f-extra-colours" name="extraColours" rows="3" placeholder="Red, #ff0000&#10;Blue, #0000ff">'+esc(extraColourText)+'</textarea><p class="small muted">One colour per line in the format: colour name, #hex code. Existing records without this field remain valid.</p></div>'
+    +(p?'<p class="small muted" style="margin:-6px 0 0">Changing the brand, material or primary colour makes this a different filament in your stock.</p>':'')
     +'<div class="grid2"><div class="field"><label for="f-weight">Spool weight (g)</label><input id="f-weight" name="weight" type="number" inputmode="decimal" min="1" step="any" value="'+esc(v.weight)+'"></div>'
     +'<div class="field"><label for="f-spools">Number of spools</label><input id="f-spools" name="spools" type="number" inputmode="numeric" min="1" step="1" value="'+esc(v.spools)+'"></div></div>'
     +'<div class="grid2"><div class="field"><label for="f-total">Total paid</label><input id="f-total" name="total" type="number" inputmode="decimal" min="0" step="any" value="'+esc(v.total)+'"></div>'
@@ -863,12 +896,17 @@ function openPurchase(id){
   upd();
   wireSubmit(form,function(){
     var d={brand:ctl(form,'brand').value.trim(),material:ctl(form,'material').value.trim(),colour:ctl(form,'colour').value.trim(),hex:safeHex(ctl(form,'hex').value),
+      filamentType:ctl(form,'filamentType').value,
       weight:num(ctl(form,'weight').value),spools:Math.max(1,Math.round(num(ctl(form,'spools').value))),total:num(ctl(form,'total').value),
       date:ctl(form,'date').value||today(),supplier:ctl(form,'supplier').value.trim()};
     if(!d.material)return fail(form,'Add the material, for example PLA or PETG.');
-    if(!d.colour)return fail(form,'Add the colour name.');
+    if(!d.colour)return fail(form,'Add the primary colour name.');
     if(!(d.weight>0))return fail(form,'Spool weight must be more than 0 g.');
     if(ctl(form,'total').value.trim()==='')return fail(form,'Add the total you paid.');
+    var parsedColours=[{name:d.colour,hex:d.hex}],rawColours=ctl(form,'extraColours').value.split(/\\r?\\n/),badColour=false;
+    rawColours.forEach(function(line){line=line.trim();if(!line)return;var m=line.match(/^(.+?)\\s*,\\s*(#[0-9a-fA-F]{6})$/);if(!m){badColour=true;return;}parsedColours.push({name:m[1].trim(),hex:m[2].toLowerCase()});});
+    if(badColour)return fail(form,'Check additional colours. Use one per line: colour name, #hex code.');
+    d.colours=parsedColours.filter(function(c,i,a){return c.name&&a.findIndex(function(x){return x.name.toLowerCase()===c.name.toLowerCase()&&x.hex===c.hex;})===i;});
     d.key=fkey(d);d.createdAt=p?p.createdAt:new Date().toISOString();
     return save('filaments',p?p.id:backend.newId('filaments'),d).then(function(ok){if(ok)toast(p?'Purchase updated':'Purchase saved');return ok;});
   });
@@ -882,7 +920,7 @@ function openProduct(id){
   var opts=Array.from(S.values()).sort(byName);
   var lines=p?(p.lines||[]).map(function(l){return {key:l.key,name:l.name,grams:l.grams};}):[];
   if(!lines.length&&opts.length)lines=[{key:opts[0].key,name:opts[0].name,grams:''}];
-  var v=p||{name:'',category:'',description:'',printHours:'',price:'',otherCost:'',printerId:'',quantityMade:1};
+  var v=p||{name:'',category:'',description:'',printHours:'',price:'',otherCost:'',printerId:'',quantityMade:1,gstRate:'',priceMode:'exclusive'};
   var ph=num(v.printHours),hh=Math.floor(ph+1e-9),mm=Math.round((ph-hh)*60);if(mm>=60){hh+=1;mm=0;}
   var printers=state.printers.slice().sort(byName);
   var cats=uniq(state.products.map(function(x){return x.category;}));
@@ -913,7 +951,8 @@ function openProduct(id){
     +'<div class="part"><h3>Details and price</h3>'
     +'<div class="field"><label for="p-cat">Category <span class="opt">optional</span></label><input id="p-cat" name="category" list="dl-cat" autocomplete="off" value="'+esc(v.category||'')+'"></div>'
     +'<div class="field"><label for="p-desc">Details <span class="opt">optional</span></label><textarea id="p-desc" name="description" placeholder="Size, colour options, infill, finish">'+esc(v.description||'')+'</textarea></div>'
-    +'<div class="field"><label for="p-price">Listed price</label><input id="p-price" name="price" type="number" inputmode="decimal" min="0" step="any" value="'+esc(v.price)+'"></div>'
+    +'<div class="field"><label for="p-price">Listed price <span class="opt">optional</span></label><input id="p-price" name="price" type="number" inputmode="decimal" min="0" step="any" value="'+esc(v.price)+'"></div>'
+    +'<div class="part"><h3>GST</h3><p class="hint">Choose the applicable rate for this product. Existing products remain unassigned until you select a rate.</p><div class="grid2"><div class="field"><label for="p-gst">GST rate</label><select id="p-gst" name="gstRate"><option value=""'+(v.gstRate==null||v.gstRate===''?' selected':'')+'>Not set</option>'+[[0,'0%'],[5,'5%'],[12,'12%'],[18,'18%'],[28,'28%']].map(function(r){return '<option value="'+r[0]+'"'+(String(v.gstRate)===String(r[0])?' selected':'')+'>'+r[1]+'</option>';}).join('')+'</select></div><div class="field"><label for="p-price-mode">Price includes GST?</label><select id="p-price-mode" name="priceMode"><option value="exclusive"'+((v.priceMode||'exclusive')==='exclusive'?' selected':'')+'>No — add GST on top</option><option value="inclusive"'+(v.priceMode==='inclusive'?' selected':'')+'>Yes — included in price</option></select></div></div><div id="gst-preview" class="live"></div></div>'
     +'<datalist id="dl-cat">'+cats.map(function(c){return '<option value="'+esc(c)+'">';}).join('')+'</datalist></div>'
     +'</div>'+foot('<div class="live" id="live"></div>',!!p,p?'Save changes':'Save product');
   var form=openDrawer(p?'Edit product':'New product',html);
@@ -930,6 +969,8 @@ function openProduct(id){
     var hrs=hoursVal(),pid=ctl(form,'printer').value;
     var c=productCost({lines:lines.map(function(l){return {key:l.key,grams:num(l.grams)};}),otherCost:ctl(form,'other').value,printerId:pid,printHours:hrs},S);
     var price=num(ctl(form,'price').value),m=price-c.total;
+    var gr=ctl(form,'gstRate').value,rate=gr===''?null:num(gr),inclusive=ctl(form,'priceMode').value==='inclusive',taxable=rate==null?null:(inclusive?price/(1+rate/100):price),gst=rate==null?null:(inclusive?price-taxable:price*rate/100),finalPrice=rate==null?null:(inclusive?price:price+gst);
+    var gp=$('#gst-preview',form);if(gp)gp.innerHTML=rate==null?'<span class="muted">GST not set — no tax calculation will be assumed.</span>':'<span><span class="muted">Taxable value</span> <strong>'+money(taxable,2)+'</strong></span><span><span class="muted">GST</span> <strong>'+money(gst,2)+'</strong></span><span><span class="muted">Final price</span> <strong>'+money(finalPrice,2)+'</strong></span>';
     var note=$('#powernote',form);
     if(note){
       var pr=state.printers.find(function(x){return x.id===pid;});
@@ -957,13 +998,12 @@ function openProduct(id){
     var name=ctl(form,'name').value.trim();
     if(!name)return fail(form,'Add a product name.');
     var used=lines.filter(function(l){return l.key&&num(l.grams)>0;}).map(function(l){return {key:l.key,name:l.name,grams:num(l.grams)};});
-    if(!used.length)return fail(form,'Add the grams of filament used for one piece.');
+    /* Recipe grams are optional for legacy or not-yet-weighed products. */
     var pid=ctl(form,'printer').value,hrs=hoursVal();
-    if(pid&&!(hrs>0))return fail(form,'Add the print time so the electricity can be worked out.');
-    if(ctl(form,'price').value.trim()==='')return fail(form,'Add the listed price.');
+    /* Unknown print time, electricity and selling price are allowed; unknown costs must not be inferred as real zeroes. */
     var pr=state.printers.find(function(x){return x.id===pid;});
     var d={name:name,category:ctl(form,'category').value.trim(),description:ctl(form,'description').value.trim(),printHours:hrs,printerId:pid,printerName:pr?pr.name:(p&&p.printerId===pid?p.printerName||'':''),
-      price:num(ctl(form,'price').value),otherCost:num(ctl(form,'other').value),quantityMade:Math.max(0,Math.floor(num(ctl(form,'made').value))),lines:used,createdAt:p?p.createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};
+      price:ctl(form,'price').value.trim()===''?null:num(ctl(form,'price').value),gstRate:ctl(form,'gstRate').value===''?null:num(ctl(form,'gstRate').value),priceMode:ctl(form,'priceMode').value,otherCost:ctl(form,'other').value.trim()===''?null:num(ctl(form,'other').value),quantityMade:Math.max(0,Math.floor(num(ctl(form,'made').value))),lines:used,createdAt:p?p.createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};
     return save('products',p?p.id:backend.newId('products'),d).then(function(ok){if(ok)toast(p?'Product updated':'Product saved');return ok;});
   });
   if(p)armDelete(form,function(){return remove('products',p.id).then(function(ok){if(ok)toast('Product deleted');return ok;});});
@@ -1003,87 +1043,24 @@ function openSale(id){
   if(id&&!s)return;
   var prods=state.products.slice().sort(byName),custs=state.customers.slice().sort(byName);
   if(!s&&!prods.length){toast('Add a product before recording a sale.',true);return;}
-  var v=s||{date:today(),productId:'',qty:1,unitPrice:'',status:'paid',customerId:custs.length?'':'__new',notes:''};
-  var prodOpts='<option value="">Choose a product</option>'+prods.map(function(p){return '<option value="'+esc(p.id)+'"'+(p.id===v.productId?' selected':'')+'>'+esc(p.name)+'</option>';}).join('')
-    +(s&&!prods.some(function(p){return p.id===s.productId;})?'<option value="'+esc(s.productId||'')+'" selected>'+esc(s.productName||'Deleted product')+'</option>':'');
-  var custOpts='<option value="">Choose a customer</option>'+custs.map(function(c){return '<option value="'+esc(c.id)+'"'+(c.id===v.customerId?' selected':'')+'>'+esc(c.name)+(c.phone?' ('+esc(c.phone)+')':'')+'</option>';}).join('')
-    +(s&&s.customerId&&!custs.some(function(c){return c.id===s.customerId;})?'<option value="'+esc(s.customerId)+'" selected>'+esc(s.customerName||'Deleted customer')+'</option>':'')
-    +'<option value="__new"'+(v.customerId==='__new'?' selected':'')+'>New customer</option>';
-  var html='<div class="dbody"><div class="part">'
-    +'<div class="grid2"><div class="field"><label for="s-date">Date</label><input id="s-date" name="date" type="date" value="'+esc(v.date)+'"></div>'
-    +'<div class="field"><label for="s-status">Payment</label><select id="s-status" name="status"><option value="paid"'+(v.status!=='pending'?' selected':'')+'>Paid</option><option value="pending"'+(v.status==='pending'?' selected':'')+'>Pending</option></select></div></div>'
-    +'<div class="field"><label for="s-prod">Product</label><select id="s-prod" name="product">'+prodOpts+'</select></div>'
-    +'<div class="grid2"><div class="field"><label for="s-qty">Quantity</label><input id="s-qty" name="qty" type="number" inputmode="numeric" min="1" step="1" value="'+esc(v.qty)+'"></div>'
-    +'<div class="field"><label for="s-price">Selling price per piece</label><input id="s-price" name="price" type="number" inputmode="decimal" min="0" step="any" value="'+esc(v.unitPrice)+'"></div></div>'
-    +'<div id="stockwarn"></div></div>'
-    +'<div class="part"><h3>Customer</h3><div class="field"><label for="s-cust" class="sr">Customer</label><select id="s-cust" name="customer">'+custOpts+'</select></div>'
-    +'<div id="newcust" class="stack"'+(v.customerId==='__new'?'':' hidden')+'>'
-    +'<div class="field"><label for="c-name">Name</label><input id="c-name" name="cname" autocomplete="off"></div>'
-    +'<div class="grid2"><div class="field"><label for="c-phone">Phone <span class="opt">optional</span></label><input id="c-phone" name="cphone" type="tel" autocomplete="off"></div>'
-    +'<div class="field"><label for="c-email">Email <span class="opt">optional</span></label><input id="c-email" name="cemail" type="email" autocomplete="off"></div></div>'
-    +'<div class="field"><label for="c-addr">City or address <span class="opt">optional</span></label><input id="c-addr" name="caddr" autocomplete="off"></div></div>'
-    +'<div class="field"><label for="s-notes">Notes <span class="opt">optional</span></label><textarea id="s-notes" name="notes">'+esc(v.notes||'')+'</textarea></div></div>'
-    +'</div>'+foot('<div class="live" id="live"></div>',!!s,s?'Save changes':'Save sale');
-  var form=openDrawer(s?'Edit sale':'Record a sale',html);
-  function curProd(){var pid=ctl(form,'product').value;return state.products.find(function(p){return p.id===pid;});}
-  function unitCost(){
-    var pr=curProd();
-    if(s&&s.productId===ctl(form,'product').value)return num(s.unitCost);
-    return pr?productCost(pr,S).total:0;
-  }
-  function upd(){
-    var qty=Math.max(0,Math.round(num(ctl(form,'qty').value))),price=num(ctl(form,'price').value),pr=curProd();
-    var total=qty*price,cost=unitCost()*qty,profit=total-cost;
-    $('#live',form).innerHTML=(pr||(s&&s.productId===ctl(form,'product').value))?'<span><span class="muted">Total</span> <strong>'+money(total,2)+'</strong></span><span><span class="muted">Cost</span> <strong>'+money(cost,2)+'</strong></span><span><span class="muted">Profit</span> <strong class="'+(profit<0?'neg':'')+'">'+signed(profit,2)+'</strong></span>':'<span class="muted">Choose a product to see the profit.</span>';
-    var w=[];
-    if(pr){
-      (pr.lines||[]).forEach(function(l){
-        var e=S.get(l.key),need=num(l.grams)*qty,left=e?e.left:0;
-        if(s&&s.productId===pr.id)(s.usage||[]).forEach(function(u){if(u.key===l.key)left+=num(u.grams)*num(s.qty);});
-        if(need>left)w.push('Not enough '+(e?e.name:(l.name||l.key))+' on the shelf: this needs '+fmtG(need)+', about '+fmtG(Math.max(0,left))+' left.');
-      });
-    }
-    $('#stockwarn',form).innerHTML=w.length?'<div class="warn-box">'+w.map(esc).join('<br>')+'</div>':'';
-  }
-  ctl(form,'product').addEventListener('change',function(){var pr=curProd();if(pr)ctl(form,'price').value=pr.price;upd();});
+  var legacy=s?saleLines(s):[{productId:prods[0]?prods[0].id:'',qty:1,unitPrice:'',unitCost:0,usage:[]}];
+  var v=s||{date:today(),status:'paid',customerId:custs.length?'':'__new',notes:''};
+  var custOpts='<option value="">Choose a customer</option>'+custs.map(function(c){return '<option value="'+esc(c.id)+'"'+(c.id===v.customerId?' selected':'')+'>'+esc(c.name)+(c.phone?' ('+esc(c.phone)+')':'')+'</option>';}).join('')+(s&&s.customerId&&!custs.some(function(c){return c.id===s.customerId;})?'<option value="'+esc(s.customerId)+'" selected>'+esc(s.customerName||'Deleted customer')+'</option>':'')+'<option value="__new"'+(v.customerId==='__new'?' selected':'')+'>New customer</option>';
+  var html='<div class="dbody"><div class="part"><div class="grid2"><div class="field"><label>Date</label><input name="date" type="date" value="'+esc(v.date||today())+'"></div><div class="field"><label>Payment</label><select name="status"><option value="paid"'+(v.status!=='pending'?' selected':'')+'>Paid</option><option value="pending"'+(v.status==='pending'?' selected':'')+'>Pending</option></select></div></div>'+
+  '<h3>Invoice items</h3><div id="sale-lines"></div><button type="button" class="btn secondary" id="add-sale-line">+ Add product</button><div id="stockwarn"></div><div id="live" class="live"></div></div>'+
+  '<div class="part"><h3>Customer</h3><div class="field"><label class="sr">Customer</label><select name="customer">'+custOpts+'</select></div><div id="newcust" class="stack"'+(v.customerId==='__new'?'':' hidden')+'><div class="field"><label>Name</label><input name="cname" autocomplete="off"></div><div class="grid2"><div class="field"><label>Phone <span class="opt">optional</span></label><input name="cphone" type="tel"></div><div class="field"><label>Email <span class="opt">optional</span></label><input name="cemail" type="email"></div></div><div class="field"><label>City or address <span class="opt">optional</span></label><input name="caddr"></div></div><div class="field"><label>Branch name <span class="opt">optional</span></label><input name="branch" value="'+esc(s&&s.branch||'')+'" placeholder="Enter branch name"></div><div class="field"><label>Notes <span class="opt">optional</span></label><textarea name="notes">'+esc(v.notes||'')+'</textarea></div></div></div>'+foot('',!!s,s?'Save changes':'Save sale');
+  var form=openDrawer(s?'Edit sale / invoice':'Record a sale / invoice',html),lineRoot=$('#sale-lines',form);
+  function productOptions(selected){return '<option value="">Choose a product</option>'+prods.map(function(p){return '<option value="'+esc(p.id)+'"'+(p.id===selected?' selected':'')+'>'+esc(p.name)+'</option>';}).join('');}
+  function addLine(line){line=line||{productId:'',qty:1,unitPrice:'',unitCost:0};var wrap=document.createElement('div');wrap.className='part sale-line';wrap.style.border='1px solid var(--line)';wrap.style.borderRadius='12px';wrap.style.padding='12px';wrap.innerHTML='<div class="field"><label>Product</label><select class="li-product">'+productOptions(line.productId||'')+'</select></div><div class="grid2"><div class="field"><label>Quantity</label><input class="li-qty" type="number" min="1" step="1" value="'+esc(line.qty||1)+'"></div><div class="field"><label>Price per piece (before GST if exclusive)</label><input class="li-price" type="number" min="0" step="any" value="'+(line.unitPrice==null?'':esc(line.unitPrice))+'"></div></div><div class="small muted li-gst"></div><div class="small li-total"></div><button type="button" class="btn secondary li-remove">Remove item</button>';lineRoot.appendChild(wrap);wrap._original=line;wrap.querySelector('.li-product').addEventListener('change',function(){var pr=state.products.find(function(p){return p.id===this.value;}.bind(this));if(pr){wrap.querySelector('.li-price').value=pr.price==null?'':pr.price;}update();});wrap.querySelectorAll('input').forEach(function(el){el.addEventListener('input',update);});wrap.querySelector('.li-remove').addEventListener('click',function(){if(lineRoot.querySelectorAll('.sale-line').length<=1){toast('An invoice needs at least one product.',true);return;}wrap.remove();update();});}
+  legacy.forEach(addLine);
+  $('#add-sale-line',form).addEventListener('click',function(){addLine({productId:'',qty:1,unitPrice:''});});
   ctl(form,'customer').addEventListener('change',function(){$('#newcust',form).hidden=this.value!=='__new';});
-  form.addEventListener('input',upd);form.addEventListener('change',upd);
-  upd();
-  wireSubmit(form,function(){
-    var pid=ctl(form,'product').value,pr=curProd(),keep=s&&s.productId===pid&&pid;
-    if(!pid||(!pr&&!keep))return fail(form,'Choose the product that was sold.');
-    var qty=Math.round(num(ctl(form,'qty').value));
-    if(!(qty>=1))return fail(form,'Quantity must be at least 1.');
-    if(ctl(form,'price').value.trim()==='')return fail(form,'Add the selling price.');
-    var sel=ctl(form,'customer').value;
-    if(!sel)return fail(form,'Choose a customer or add a new one.');
-    var newCust=null;
-    if(sel==='__new'){
-      var nm=ctl(form,'cname').value.trim();
-      if(!nm)return fail(form,'Add the customer\u2019s name.');
-      newCust={name:nm,phone:ctl(form,'cphone').value.trim(),email:ctl(form,'cemail').value.trim(),address:ctl(form,'caddr').value.trim(),notes:'',createdAt:new Date().toISOString()};
-    }
-    var custId=sel,custNameSnap;
-    var run=Promise.resolve(true);
-    if(newCust){
-      custId=backend.newId('customers');custNameSnap=newCust.name;
-      run=save('customers',custId,newCust);
-    }else{
-      var ex=state.customers.find(function(c){return c.id===sel;});
-      custNameSnap=ex?ex.name:(s&&s.customerName)||'';
-    }
-    return run.then(function(ok){
-      if(!ok)return false;
-      var snap=keep?{unitCost:s.unitCost,usage:s.usage||[],printerId:s.printerId||'',hours:num(s.hours)}:{unitCost:productCost(pr,S).total,usage:(pr.lines||[]).map(function(l){return {key:l.key,grams:num(l.grams)};}),printerId:pr.printerId||'',hours:num(pr.printHours)};
-      var d={date:ctl(form,'date').value||today(),productId:pid,productName:pr?pr.name:s.productName,qty:qty,unitPrice:num(ctl(form,'price').value),
-        unitCost:snap.unitCost,usage:snap.usage,printerId:snap.printerId,hours:snap.hours,status:ctl(form,'status').value==='pending'?'pending':'paid',customerId:custId,customerName:custNameSnap,
-        notes:ctl(form,'notes').value.trim(),createdAt:s?s.createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};
-      return save('sales',s?s.id:backend.newId('sales'),d).then(function(ok2){if(ok2)toast(s?'Sale updated':'Sale saved');return ok2;});
-    });
-  });
+  function update(){var rows=[],total=0,taxable=0,tax=0,cost=0,warnings=[];lineRoot.querySelectorAll('.sale-line').forEach(function(el){var pid=el.querySelector('.li-product').value,pr=state.products.find(function(p){return p.id===pid;}),qty=Math.max(1,Math.round(num(el.querySelector('.li-qty').value))),priceRaw=el.querySelector('.li-price').value,price=priceRaw===''?null:num(priceRaw);if(!pr){el.querySelector('.li-gst').textContent='Choose a product';el.querySelector('.li-total').textContent='';return;}var rate=pr.gstRate==null||pr.gstRate===''?null:num(pr.gstRate),mode=pr.priceMode||'exclusive',tx=price==null?null:(mode==='inclusive'?price/(1+(rate||0)/100):price),gt=price==null||rate==null?0:(mode==='inclusive'?price-tx:price*rate/100),final=price==null?null:(mode==='inclusive'?price:price+gt),pc=productCost(pr,S),original=el._original||{},unitCost=(original.productId===pid&&original.unitCost!=null)?num(original.unitCost):pc.total,usage=(original.productId===pid&&original.usage)?original.usage:(pr.lines||[]).map(function(l){return {key:l.key,grams:num(l.grams)};});rows.push({productId:pid,productName:pr.name,qty:qty,unitPrice:price,unitCost:unitCost,usage:usage,printerId:pr.printerId||'',hours:num(pr.printHours),gstRate:rate,priceMode:mode,taxableUnit:tx==null?null:Math.round(tx*100)/100,gstUnit:Math.round(gt*100)/100,finalUnit:final==null?null:Math.round(final*100)/100});if(final!=null){total+=final*qty;taxable+=(tx||0)*qty;tax+=gt*qty;}cost+=unitCost*qty;el.querySelector('.li-gst').textContent=rate==null?'GST rate not set — no GST calculated':('GST '+rate+'% · '+(mode==='inclusive'?'inclusive':'added on top'));el.querySelector('.li-total').textContent=(final==null?'Price not entered':'Line total '+money(final*qty,2))+' · cost '+money(unitCost*qty,2);(pr.lines||[]).forEach(function(l){var e=S.get(l.key),need=num(l.grams)*qty,left=e?e.left:0;if(s)saleLines(s).filter(function(sl){return sl.productId===pid;}).forEach(function(sl){if(sl.usage)(sl.usage).forEach(function(u){if(u.key===l.key)left+=num(u.grams)*num(sl.qty);});});if(need>left)warnings.push('Not enough '+(e?e.name:(l.name||l.key))+': need '+fmtG(need)+', about '+fmtG(Math.max(0,left))+' left.');});});
+    var profit=total-cost;$('#live',form).innerHTML='<span><span class="muted">Invoice total</span> <strong>'+money(total,2)+'</strong></span><span><span class="muted">Taxable value</span> <strong>'+money(taxable,2)+'</strong></span><span><span class="muted">GST</span> <strong>'+money(tax,2)+'</strong></span><span><span class="muted">Cost</span> <strong>'+money(cost,2)+'</strong></span><span><span class="muted">Profit before GST remittance</span> <strong class="'+(profit<0?'neg':'')+'">'+signed(total-tax-cost,2)+'</strong></span>';$('#stockwarn',form).innerHTML=warnings.length?'<div class="warn-box">'+warnings.map(esc).join('<br>')+'</div>':'';return rows;}
+  form.addEventListener('input',update);form.addEventListener('change',update);update();
+  wireSubmit(form,function(){var items=update();if(!items.length||items.some(function(l){return !l.productId;}))return fail(form,'Choose a product for every invoice item.');if(items.some(function(l){return !(l.qty>=1);}))return fail(form,'Each quantity must be at least 1.');if(items.some(function(l){return l.unitPrice==null||l.unitPrice<0;}))return fail(form,'Enter a selling price for every product.');var sel=ctl(form,'customer').value;if(!sel)return fail(form,'Choose a customer or add a new one.');var newCust=null;if(sel==='__new'){var nm=ctl(form,'cname').value.trim();if(!nm)return fail(form,'Add the customer’s name.');newCust={name:nm,phone:ctl(form,'cphone').value.trim(),email:ctl(form,'cemail').value.trim(),address:ctl(form,'caddr').value.trim(),notes:'',createdAt:new Date().toISOString()};}var custId=sel,custNameSnap='';var run=Promise.resolve(true);if(newCust){custId=backend.newId('customers');custNameSnap=newCust.name;run=save('customers',custId,newCust);}else{var ex=state.customers.find(function(c){return c.id===sel;});custNameSnap=ex?ex.name:(s&&s.customerName)||'';}return run.then(function(ok){if(!ok)return false;var first=items[0],legacyFields={productId:first.productId,productName:first.productName,qty:first.qty,unitPrice:first.unitPrice,unitCost:first.unitCost,usage:first.usage,printerId:first.printerId,hours:first.hours};var d=Object.assign({},legacyFields,{lineItems:items,date:ctl(form,'date').value||today(),status:ctl(form,'status').value==='pending'?'pending':'paid',customerId:custId,customerName:custNameSnap,branch:ctl(form,'branch').value.trim(),notes:ctl(form,'notes').value.trim(),taxableTotal:Math.round(items.reduce(function(a,l){return a+num(l.taxableUnit)*l.qty;},0)*100)/100,gstTotal:Math.round(items.reduce(function(a,l){return a+num(l.gstUnit)*l.qty;},0)*100)/100,invoiceTotal:Math.round(items.reduce(function(a,l){return a+num(l.finalUnit)*l.qty;},0)*100)/100,createdAt:s?s.createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()});return save('sales',s?s.id:backend.newId('sales'),d).then(function(ok2){if(ok2)toast(s?'Invoice updated':'Invoice saved');return ok2;});});});
   if(s)armDelete(form,function(){return remove('sales',s.id).then(function(ok){if(ok)toast('Sale deleted');return ok;});});
 }
-
 /* ---------- forms: customer ---------- */
 function openCustomer(id){
   var c=id?state.customers.find(function(x){return x.id===id;}):null;
@@ -1126,6 +1103,7 @@ function reportFilaments(){
       'Used for products made (g)':Math.round(e.productionUsed*10)/10,
       'Used in unproduced sales (g)':Math.round(e.used*10)/10,
       'Configured in product recipes (g/piece)':Math.round(e.recipeUsed*10)/10,
+      'Wastage (g)':Math.round(num(e.wastageUsed)*10)/10,
       'Total actual used (g)':Math.round(e.actualUsed*10)/10,
       'Remaining (g)':Math.round(e.left*10)/10,
       'Total paid':Math.round(e.paid*100)/100,
@@ -1136,38 +1114,29 @@ function reportFilaments(){
 function reportProducts(){
   var S=getStats();
   return state.products.slice().sort(byName).map(function(p){
-    var c=productCost(p,S), margin=num(p.price)-c.total;
+    var c=productCost(p,S), pg=productGst(p,p.price), sellNet=p.price==null?null:(p.gstRate==null?num(p.price):pg.taxable), margin=sellNet==null||!p.lines||!p.lines.length?null:sellNet-c.total;
     return {
       'Product':p.name||'',
       'Category':p.category||'',
       'Quantity made':Math.max(0,num(p.quantityMade)),
       'Filament per piece (g)':Math.round(c.grams*10)/10,
-      'Filament cost / piece':Math.round(c.fil*100)/100,
-      'Electricity cost':Math.round(c.elec*100)/100,
-      'Other cost':Math.round(c.other*100)/100,
-      'Total cost':Math.round(c.total*100)/100,
-      'Listed price':Math.round(num(p.price)*100)/100,
-      'Margin':Math.round(margin*100)/100,
-      'Margin %':num(p.price)>0?Math.round(margin/num(p.price)*10000)/100:0
+      'Filament cost / piece':p.lines&&p.lines.length?Math.round(c.fil*100)/100:'N/A',
+      'Electricity cost':p.printerId&&num(p.printHours)>0?Math.round(c.elec*100)/100:'N/A',
+      'Other cost':p.otherCost==null||p.otherCost===''?'N/A':Math.round(c.other*100)/100,
+      'Total cost':p.lines&&p.lines.length?Math.round(c.total*100)/100:'N/A',
+      'Listed price':p.price==null?'N/A':Math.round(num(p.price)*100)/100,
+      'GST rate %':p.gstRate==null?'Not set':num(p.gstRate),
+      'GST price mode':p.priceMode||'exclusive',
+      'Taxable value':p.price==null||p.gstRate==null?'N/A':Math.round((p.price/(p.priceMode==='inclusive'?1+num(p.gstRate)/100:1))*100)/100,
+      'GST amount':p.price==null||p.gstRate==null?'N/A':Math.round((p.price-(p.priceMode==='inclusive'?p.price/(1+num(p.gstRate)/100):p.price))*100)/100,
+      'Final price':p.price==null||p.gstRate==null?'N/A':Math.round((p.price*(p.priceMode==='inclusive'?1:1+num(p.gstRate)/100))*100)/100,
+      'Margin':margin==null?'N/A':Math.round(margin*100)/100,
+      'Margin %':margin!=null&&sellNet>0?Math.round(margin/sellNet*10000)/100:'N/A'
     };
   });
 }
 function reportSales(){
-  return sortedSales(state.sales).map(function(s){
-    var revenue=saleRev(s), cost=saleCost(s);
-    return {
-      'Date':s.date||'',
-      'Customer':custName(s),
-      'Product':prodName(s),
-      'Qty':num(s.qty),
-      'Unit price':Math.round(num(s.unitPrice)*100)/100,
-      'Sales total':Math.round(revenue*100)/100,
-      'Unit cost':Math.round(num(s.unitCost)*100)/100,
-      'Total cost':Math.round(cost*100)/100,
-      'Profit':Math.round((revenue-cost)*100)/100,
-      'Payment':s.status==='pending'?'Pending':'Paid'
-    };
-  });
+  return sortedSales(state.sales).map(function(s){var revenue=saleRev(s),cost=saleCost(s);return {'Date':s.date||'','Customer':custName(s),'Branch':s.branch||'','Products':prodName(s),'Line items':saleLines(s).map(function(l){return (l.productName||'')+' × '+num(l.qty);}).join('; '),'Qty total':saleLines(s).reduce(function(t,l){return t+num(l.qty);},0),'Taxable value':saleTaxable(s),'GST amount':saleTax(s),'Invoice total':Math.round(revenue*100)/100,'Total cost':Math.round(cost*100)/100,'Profit before GST remittance':Math.round((saleTaxable(s)-cost)*100)/100,'Payment':s.status==='pending'?'Pending':'Paid'};});
 }
 function reportTable(title,rows){
   if(!rows.length)return '<section class="sec"><div class="sec-head"><h2>'+esc(title)+'</h2></div><p class="muted">No data yet.</p></section>';
@@ -1183,7 +1152,7 @@ function reportTable(title,rows){
 }
 function vReports(){
   var f=reportFilaments(),p=reportProducts(),s=reportSales();
-  return '<section class="sec"><div class="info-box"><strong>Google Sheets</strong> — Auto-sync is enabled when a Web App URL is configured in Settings. Changes to filament purchases, products, sales and customers are sent automatically. You can also use “Sync to Google Sheets” above. Quantity made is deducted from filament stock; recipe grams are shown separately. The sync writes three tabs: Filament Report, Product Report and Sales Report.</div></section>'+
+  return '<section class="sec"><div class="info-box"><strong>Google Sheets</strong> — Auto-sync is enabled when a Web App URL is configured in Settings. Changes to filament purchases, products, sales and customers are sent automatically. You can also use “Sync to Google Sheets” above. Quantity made is deducted from filament stock; recipe grams are shown separately. The sync updates Filament Report, Product Report, Sales Report, Wastage Report, Branch Transfers and Sync Log.</div></section>'+
     reportTable('Filament report',f)+reportTable('Product report',p)+reportTable('Sales report',s);
 }
 function sheetsPayload(){
@@ -1192,7 +1161,9 @@ function sheetsPayload(){
     syncedAt:new Date().toISOString(),
     filament:reportFilaments(),
     products:reportProducts(),
-    sales:reportSales()
+    sales:reportSales(),
+    wastage:state.wastage.map(function(w){var e=getStats().get(w.filamentKey);return {'Date':w.date||'','Filament':e?e.name:(w.filamentName||w.filamentKey||''),'Wasted grams':num(w.grams),'Reason':w.reason||'','Notes':w.notes||''};}),
+    branchTransfers:state.transfers.map(function(t){return {'Date':t.date||'','Branch':t.branch||'','Product':t.productName||'','Quantity':Math.max(1,num(t.quantity||1)),'Transfer price':t.price==null?'N/A':num(t.price),'Notes':t.notes||''};})
   });
 }
 function testGoogleSheets(){
@@ -1200,7 +1171,7 @@ function testGoogleSheets(){
   if(!url){toast('Add your Google Sheets Web App URL in Settings first.',true);return;}
   var frame=document.getElementById('sheets-test-frame');
   if(!frame){frame=document.createElement('iframe');frame.id='sheets-test-frame';frame.name='sheets-test-frame';frame.style.display='none';document.body.appendChild(frame);}
-  frame.onload=function(){toast('Google Sheets Web App is reachable.');};
+  frame.onload=function(){toast('Connection test opened. This does not confirm that a report was written; use Sync and check the Sync Log in Sheets.',true);};
   frame.src=url+'?test='+encodeURIComponent(Date.now());
 }
 function syncGoogleSheets(silent){
@@ -1248,11 +1219,9 @@ function syncGoogleSheets(silent){
       return;
     }
 
-    state.settings.lastSheetsSync=new Date().toISOString();
-    // Do not save settings here; that would trigger another sync loop.
-    if(!silent)toast('✓ Filament/Product/Sales reports sent to Google Sheets');
-    else toast('✓ Google Sheets auto-updated');
-    resolve(true);
+    // Browser transport is opaque (sendBeacon/no-cors), so do not label this as a confirmed sync.
+    if(!silent)toast('Request queued. Google Sheets receipt is not confirmed by this browser connection.',true);
+    resolve({queued:true,confirmed:false});
   });
 }
 
@@ -1276,16 +1245,29 @@ function csvCell(v,text){
   return /[",\n\r]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;
 }
 function salesCsv(){
-  var head=['Date','Customer','Phone','Email','Product','Quantity','Price per piece','Total','Cost per piece','Profit','Payment','Notes'];
-  var rows=sortedSales(state.sales).map(function(s){
-    var c=state.customers.find(function(x){return x.id===s.customerId;})||{};
-    return [[s.date,1],[custName(s),1],[c.phone||'',1],[c.email||'',1],[prodName(s),1],[num(s.qty),0],[num(s.unitPrice),0],[saleRev(s),0],[num(s.unitCost),0],[saleRev(s)-saleCost(s),0],[s.status==='pending'?'Pending':'Paid',1],[s.notes||'',1]].map(function(x){return csvCell(x[0],x[1]);}).join(',');
-  });
-  return [head.join(',')].concat(rows).join('\n');
+  var head=['Date','Customer','Phone','Email','Branch','Products / quantities','Taxable value','GST amount','Invoice total','Total cost','Profit before GST remittance','Payment','Notes'];
+  var rows=sortedSales(state.sales).map(function(s){var c=state.customers.find(function(x){return x.id===s.customerId;})||{};return [[s.date,1],[custName(s),1],[c.phone||'',1],[c.email||'',1],[s.branch||'',1],[saleLines(s).map(function(l){return (l.productName||'')+' x '+num(l.qty);}).join('; '),1],[saleTaxable(s),0],[saleTax(s),0],[saleRev(s),0],[saleCost(s),0],[saleProfit(s),0],[s.status==='pending'?'Pending':'Paid',1],[s.notes||'',1]].map(function(x){return csvCell(x[0],x[1]);}).join(',');});return [head.join(',')].concat(rows).join('\n');
 }
 function offerFile(name,data){
-  if(!dlCap){toast('Downloads are not available here.',true);return;}
-  Promise.resolve(dlCap.save({filename:name,data:data})).then(function(){toast('File saved');},function(e){if(e&&e.code==='declined')return;toast('Could not save the file.',true);});
+  if(dlCap&&typeof dlCap.save==='function'){
+    Promise.resolve(dlCap.save({filename:name,data:data})).then(function(){toast('File saved');},function(e){
+      if(e&&e.code==='declined')return;
+      browserOfferFile(name,data);
+    });
+    return;
+  }
+  browserOfferFile(name,data);
+}
+function browserOfferFile(name,data){
+  try{
+    var blob=new Blob([data],{type:/\.json$/i.test(name)?'application/json;charset=utf-8':'text/csv;charset=utf-8'});
+    var url=URL.createObjectURL(blob);
+    var a=document.createElement('a');
+    a.href=url;a.download=name;a.style.display='none';
+    document.body.appendChild(a);a.click();a.remove();
+    setTimeout(function(){URL.revokeObjectURL(url);},1000);
+    toast('Backup download started. Check your browser downloads.');
+  }catch(e){toast('Browser could not start the download. No cloud data was changed.',true);}
 }
 function openSettings(){
   var s=state.settings,cc=getCloudConfig();
@@ -1294,20 +1276,20 @@ function openSettings(){
     :'<div class="note" style="margin-bottom:14px">Cloud database is not connected. Your current records are stored in this browser only.</div>';
   var html='<div class="dbody"><div class="part">'
     +cloudStatus
-    +'<h3>Cloud database</h3><p class="hint">Use a Supabase project so your VFORGE data is available on every computer. The anon key is designed for browser use; database security comes from the RLS policy in the setup SQL.</p>'
+    +'<h3>Cloud database</h3><p class="hint">Use the existing Supabase project to access cloud records. The publishable key is intended for browser use. Shared workspace access and Admin/Staff permissions are not enabled by this screen alone; they must be configured and verified in Supabase RLS before staff accounts are used.</p>'
     +'<div class="field"><label for="st-cloud-url">Supabase Project URL</label><input id="st-cloud-url" name="cloud-url" type="url" placeholder="https://xxxxxxxx.supabase.co" value="'+esc(cc.url||'')+'"></div>'
     +'<div class="field"><label for="st-cloud-key">Supabase publishable key</label><input id="st-cloud-key" name="cloud-key" type="password" autocomplete="off" placeholder="sb_publishable_..."></div>'
     +'<div class="field"><label for="st-cloud-email">Cloud login email</label><input id="st-cloud-email" name="cloud-email" type="email" value="'+esc(cc.email||'')+'" autocomplete="username"></div>'
     +'<div class="field"><label for="st-cloud-password">Cloud password</label><input id="st-cloud-password" name="cloud-password" type="password" autocomplete="current-password" placeholder="Not stored by CRM"></div>'
-    +'<div style="display:flex;gap:10px;flex-wrap:wrap"><button type="button" class="btn primary" data-cloud-action="connect">Connect Cloud</button><button type="button" class="btn" data-cloud-action="signup">Create cloud account</button>'+(state.storage==='cloud'?'<button type="button" class="btn danger" data-cloud-action="disconnect">Disconnect</button>':'')+'</div>'
-    +'<p class="small muted" style="margin-top:10px">When you connect, the records currently in this browser are uploaded to your cloud account. Use the same login on another computer to access the same CRM data.</p>'
+    +'<div style="display:flex;gap:10px;flex-wrap:wrap"><button type="button" class="btn primary" data-cloud-action="connect">Connect Cloud</button>'+(state.storage==='cloud'?'<button type="button" class="btn danger" data-cloud-action="disconnect">Disconnect</button>':'')+'</div>'
+    +'<p class="small muted" style="margin-top:10px">Connecting loads records from the signed-in cloud account. Browser-local records are not imported automatically. Use the same approved account to access its cloud records on another computer. Do not create staff accounts from this screen.</p>'
     +'</div>'
     +'<div class="part"><div class="field"><label for="st-cur">Currency</label><select id="st-cur" name="currency">'+CURRENCIES.map(function(c){return '<option value="'+c[0]+'"'+(c[0]===s.currency?' selected':'')+'>'+c[0]+', '+c[1]+'</option>';}).join('')+'</select></div>'
     +'<div class="field"><label for="st-rate">Electricity price per unit (kWh)</label><input id="st-rate" name="rate" type="number" inputmode="decimal" min="0" step="any" value="'+esc(s.powerRate)+'"></div>'
     +'<p class="small muted" style="margin:-8px 0 0">Tariffs differ by state and by home or commercial connection, so there is no single national price. Homes are commonly around \\u20b95 to \\u20b98 a unit and commercial connections \\u20b98 to \\u20b916. For the most accurate number, divide a full month\\u2019s bill by the units used.</p>'
     +'<div class="field"><label for="st-low">Warn when a filament is below (g)</label><input id="st-low" name="low" type="number" inputmode="numeric" min="0" step="any" value="'+esc(s.lowStock)+'"></div>'
     +'<div class="field"><label for="st-sheets">Google Sheets Web App URL <span class="opt">optional</span></label><input id="st-sheets" name="sheets" type="url" placeholder="https://script.google.com/macros/s/.../exec" value="'+esc(s.googleSheetsUrl||'')+'"></div>'
-    +(s.lastSheetsSync?'<div class="small muted">Last sync sent: '+esc(new Date(s.lastSheetsSync).toLocaleString())+'</div>':'')+'</div>'
+    +(s.lastSheetsSync?'<div class="small muted">Last sync attempt: '+esc(new Date(s.lastSheetsSync).toLocaleString())+'</div>':'')+'</div>'
     +'<div class="part"><h3>Export</h3><p class="hint">Take your records into a spreadsheet or keep a backup.</p><div style="display:flex;gap:10px;flex-wrap:wrap"><button type="button" class="btn" data-export="csv">Sales as CSV</button><button type="button" class="btn" data-export="json">Everything as JSON</button></div></div>'
     +'</div>'+foot('',false,'Save settings');
   var form=openDrawer('Settings',html);
@@ -1315,14 +1297,14 @@ function openSettings(){
     var b=e.target.closest('[data-export]');
     if(b){
       if(b.dataset.export==='csv')offerFile('vforge-3d-sales.csv',salesCsv());
-      else offerFile('vforge-3d-backup.json',JSON.stringify({exportedAt:new Date().toISOString(),filaments:state.filaments,printers:state.printers,products:state.products,customers:state.customers,sales:state.sales,settings:state.settings},null,2));
+      else offerFile('vforge-3d-backup.json',JSON.stringify({exportedAt:new Date().toISOString(),schemaVersion:2,filaments:state.filaments,printers:state.printers,products:state.products,customers:state.customers,sales:state.sales,wastage:state.wastage,transfers:state.transfers,settings:state.settings},null,2));
       return;
     }
     var c=e.target.closest('[data-cloud-action]');
     if(!c)return;
     if(c.dataset.cloudAction==='disconnect'){disconnectCloud();closeDrawer();}
     else if(c.dataset.cloudAction==='connect')connectCloudFromForm(form,false);
-    else if(c.dataset.cloudAction==='signup')connectCloudFromForm(form,true);
+    else if(c.dataset.cloudAction==='signup'){toast('Create staff accounts through the Supabase administrator workflow.',true);}
   });
   wireSubmit(form,function(){
     var low=Math.max(0,num(ctl(form,'low').value));
@@ -1354,6 +1336,10 @@ document.addEventListener('click',function(e){
     else if(a==='new-printer')openPrinter();
     else if(a==='new-sale')openSale();
     else if(a==='new-customer')openCustomer();
+    else if(a==='new-wastage')openWastage();
+    else if(a==='new-transfer')openTransfer();
+    else if(a.indexOf('delete-wastage:')===0){var wid=a.slice(15);if(confirm('Delete this wastage record?'))remove('wastage',wid).then(function(ok){if(ok)toast('Wastage record deleted');});}
+    else if(a.indexOf('delete-transfer:')===0){var tid=a.slice(17);if(confirm('Delete this branch transfer?'))remove('transfers',tid).then(function(ok){if(ok)toast('Transfer deleted');});}
     else if(a==='settings')openSettings();
     else if(a==='sync-sheets')syncGoogleSheets();
     else if(a==='test-sheets')testGoogleSheets();
@@ -1407,7 +1393,7 @@ function onDocs(col,docs){
     renderContent();setStamp();
     // Sync only after the live/backend update has reached local state.
     // This prevents Google Sheets from receiving the previous inventory snapshot.
-    if(['filaments','products','sales','customers'].indexOf(col)>=0)queueAutoSheetsSync('backend-update:'+col);
+    if(['filaments','products','sales','customers','wastage','transfers'].indexOf(col)>=0)queueAutoSheetsSync('backend-update:'+col);
   }
 }
 function boot(){
