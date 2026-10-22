@@ -130,3 +130,6 @@ These are direct observations from the screenshots, not a live connector query b
 
 
 - Section 10 function inventory screenshot (2026-10-22) returned only `auth.role()`, with `security_definer = false` and no function settings. This query only searches function names containing workspace/member/role; it does not prove no other relevant functions exist. The existing timestamp trigger function `vforge_set_updated_at()` should be reviewed separately.
+
+
+- Full trigger definition was returned by the user's read-only query (2026-10-22): `public.vforge_set_updated_at()` is a PL/pgSQL trigger function that only sets `NEW.updated_at = now()` and returns `NEW`. It is not SECURITY DEFINER. This function is a simple timestamp trigger and does not implement authorization.
