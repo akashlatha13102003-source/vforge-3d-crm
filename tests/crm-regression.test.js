@@ -136,12 +136,14 @@ test('Google Sheets payload includes all report groups supported by the CRM', ()
 
 test('Supabase preflight remains read-only and covers required security metadata', () => {
   const sql = fs.readFileSync('docs/READ_ONLY_SUPABASE_SECURITY_PREFLIGHT.sql', 'utf8');
-  const executable = sql.replace(/--[^\\n]*/g, '').toLowerCase();
-  assert.match(executable, /from pg_policies/);
-  assert.match(executable, /from information_schema\\.columns/);
-  assert.match(executable, /from pg_constraint/);
-  assert.match(executable, /group by workspace_id, collection/);
-  assert.match(executable, /having count\\(\\*\\) > 1/);
-  assert.match(executable, /relrowsecurity/);
+  const executable = sql.replace(/--.*$/gm, '').toLowerCase();
+  for (const fragment of [
+    'from pg_policies',
+    'from information_schema.columns',
+    'from pg_constraint',
+    'group by workspace_id, collection',
+    'having count(*) > 1',
+    'relrowsecurity'
+  ]) assert.ok(executable.includes(fragment), 'preflight SQL must include ' + fragment);
   assert.doesNotMatch(executable, /\\b(insert|update|delete|alter|drop|create|truncate|grant|revoke)\\b/, 'preflight SQL must not mutate database state');
 });
