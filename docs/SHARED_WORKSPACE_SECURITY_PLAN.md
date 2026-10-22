@@ -127,3 +127,6 @@ These are direct observations from the screenshots, not a live connector query b
 2. Review section 10 function output, including `vforge_set_updated_at()` if it appears in the query results.
 3. Check existing policies/grants for workspace and membership access and decide a secure membership-management bootstrap path. The current screenshots show zero RLS policies on those two tables and no ordinary authenticated table grants, so a role-aware browser app cannot safely rely on direct access to those tables until a reviewed policy/provisioning design exists.
 4. Build and test an additive migration plan and a rollback plan; do not apply it before Admin/Staff acceptance tests are possible.
+
+
+- Section 10 function inventory screenshot (2026-10-22) returned only `auth.role()`, with `security_definer = false` and no function settings. This query only searches function names containing workspace/member/role; it does not prove no other relevant functions exist. The existing timestamp trigger function `vforge_set_updated_at()` should be reviewed separately.
