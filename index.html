@@ -1265,9 +1265,12 @@ function salesCsv(){
   var rows=sortedSales(state.sales).map(function(s){var c=state.customers.find(function(x){return x.id===s.customerId;})||{};return [[s.date,1],[custName(s),1],[c.phone||'',1],[c.email||'',1],[s.branch||'',1],[saleLines(s).map(function(l){return (l.productName||'')+' x '+num(l.qty);}).join('; '),1],[saleTaxable(s),0],[saleTax(s),0],[saleRev(s),0],[saleCost(s),0],[saleProfit(s),0],[s.status==='pending'?'Pending':'Paid',1],[s.notes||'',1]].map(function(x){return csvCell(x[0],x[1]);}).join(',');});return [head.join(',')].concat(rows).join('\n');
 }
 function offerFile(name,data){
+  // Try the host download bridge first, but never let a missing/declined bridge
+  // prevent the normal browser download fallback.
   if(dlCap&&typeof dlCap.save==='function'){
-    Promise.resolve(dlCap.save({filename:name,data:data})).then(function(){toast('File saved');},function(e){
-      if(e&&e.code==='declined')return;
+    Promise.resolve().then(function(){return dlCap.save({filename:name,data:data});}).then(function(){
+      toast('File saved');
+    },function(){
       browserOfferFile(name,data);
     });
     return;
@@ -1275,15 +1278,23 @@ function offerFile(name,data){
   browserOfferFile(name,data);
 }
 function browserOfferFile(name,data){
+  var blobUrl=null;
   try{
     var blob=new Blob([data],{type:/\.json$/i.test(name)?'application/json;charset=utf-8':'text/csv;charset=utf-8'});
-    var url=URL.createObjectURL(blob);
+    blobUrl=URL.createObjectURL(blob);
     var a=document.createElement('a');
-    a.href=url;a.download=name;a.style.display='none';
-    document.body.appendChild(a);a.click();a.remove();
-    setTimeout(function(){URL.revokeObjectURL(url);},1000);
-    toast('Backup download started. Check your browser downloads.');
-  }catch(e){toast('Browser could not start the download. No cloud data was changed.',true);}
+    a.href=blobUrl;a.download=name;a.style.display='none';
+    a.setAttribute('rel','noopener');
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    // Keep the Blob URL alive longer for browsers that start downloads asynchronously.
+    setTimeout(function(){try{URL.revokeObjectURL(blobUrl);}catch(ignore){}},60000);
+    toast('Download requested. If it does not appear, allow downloads for this site and try again.');
+  }catch(e){
+    if(blobUrl){try{URL.revokeObjectURL(blobUrl);}catch(ignore){}}
+    toast('Browser could not start the download. No cloud data was changed.',true);
+  }
 }
 function openSettings(){
   var s=state.settings,cc=getCloudConfig();
