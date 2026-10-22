@@ -166,3 +166,14 @@ test('workspace rollout runbook requires staging and coordinated app/database cu
   assert.match(runbook, /Never deploy a workspace-only database policy set while the old user-scoped adapter is still the active production client/);
   assert.match(runbook, /No production database migration has been applied by this runbook/);
 });
+
+test('backup validator is read-only and checks all exported collections', () => {
+  assert.match(source, /data-backup-preview/);
+  assert.match(source, /JSON\.parse\(raw\)/);
+  assert.match(source, /schemaVersion/);
+  for (const key of ['filaments','printers','products','customers','sales','wastage','transfers','settings']) {
+    assert.match(source, new RegExp(key));
+  }
+  assert.match(source, /This is a read-only preview/);
+  assert.match(source, /No records were imported, merged, replaced, or deleted/);
+});
