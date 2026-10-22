@@ -1150,10 +1150,23 @@ function reportTable(title,rows){
     }).join('')+'</tr>';}).join('')+
     '</tbody></table></div></section>';
 }
+function reportCustomers(){
+  var M=custStats();
+  return Array.from(M.values()).sort(function(a,b){return byName(a.c,b.c);}).map(function(e){
+    var c=e.c;
+    return {'Customer':c.name||'','Phone':c.phone||'','Email':c.email||'','Address':c.address||'','Orders':e.orders,'Total spent':Math.round(e.spent*100)/100,'Last order':e.last||''};
+  });
+}
+function reportWastage(){
+  return state.wastage.map(function(w){var e=getStats().get(w.filamentKey);return {'Date':w.date||'','Filament':e?e.name:(w.filamentName||w.filamentKey||''),'Wasted grams':num(w.grams),'Reason':w.reason||'','Notes':w.notes||''};});
+}
+function reportTransfers(){
+  return state.transfers.map(function(t){return {'Date':t.date||'','Branch':t.branch||'','Product':t.productName||'','Quantity':Math.max(1,num(t.quantity||1)),'Transfer price':t.price==null?'N/A':num(t.price),'Notes':t.notes||''};});
+}
 function vReports(){
-  var f=reportFilaments(),p=reportProducts(),s=reportSales();
-  return '<section class="sec"><div class="info-box"><strong>Google Sheets</strong> — Auto-sync is enabled when a Web App URL is configured in Settings. Changes to filament purchases, products, sales and customers are sent automatically. You can also use “Sync to Google Sheets” above. Quantity made is deducted from filament stock; recipe grams are shown separately. The sync updates Filament Report, Product Report, Sales Report, Wastage Report, Branch Transfers and Sync Log.</div></section>'+
-    reportTable('Filament report',f)+reportTable('Product report',p)+reportTable('Sales report',s);
+  var f=reportFilaments(),p=reportProducts(),s=reportSales(),c=reportCustomers(),w=reportWastage(),t=reportTransfers();
+  return '<section class="sec"><div class="info-box"><strong>Google Sheets</strong> — Auto-sync is enabled when a Web App URL is configured in Settings. Changes are sent to report sheets; the browser reports when a request is queued, not confirmed, unless receipt is verified in the Sync Log. Quantity made is deducted from filament stock; recipe grams are shown separately.</div></section>'+
+    reportTable('Filament report',f)+reportTable('Product report',p)+reportTable('Sales report',s)+reportTable('Customer report',c)+reportTable('Wastage report',w)+reportTable('Branch transfers',t);
 }
 function sheetsPayload(){
   return JSON.stringify({
@@ -1162,8 +1175,9 @@ function sheetsPayload(){
     filament:reportFilaments(),
     products:reportProducts(),
     sales:reportSales(),
-    wastage:state.wastage.map(function(w){var e=getStats().get(w.filamentKey);return {'Date':w.date||'','Filament':e?e.name:(w.filamentName||w.filamentKey||''),'Wasted grams':num(w.grams),'Reason':w.reason||'','Notes':w.notes||''};}),
-    branchTransfers:state.transfers.map(function(t){return {'Date':t.date||'','Branch':t.branch||'','Product':t.productName||'','Quantity':Math.max(1,num(t.quantity||1)),'Transfer price':t.price==null?'N/A':num(t.price),'Notes':t.notes||''};})
+    customers:reportCustomers(),
+    wastage:reportWastage(),
+    branchTransfers:reportTransfers()
   });
 }
 function testGoogleSheets(){
