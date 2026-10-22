@@ -38,11 +38,12 @@ function createSharedWorkspaceAdapter({ supabase, userId, workspaceId, role }) {
   }
 
   async function list(collection) {
+    const col = collectionName(collection);
     const result = await supabase
       .from('vforge_records')
       .select('id,data,updated_at,user_id,workspace_id')
       .eq('workspace_id', workspaceId)
-      .eq('collection', collectionName(collection))
+      .eq('collection', col)
       .order('updated_at', { ascending: false });
     if (result.error) throw result.error;
     return result.data || [];
