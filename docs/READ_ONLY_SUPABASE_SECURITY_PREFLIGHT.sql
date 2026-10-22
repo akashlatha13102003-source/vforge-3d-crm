@@ -119,3 +119,17 @@ join pg_namespace n on n.oid = p.pronamespace
 where n.nspname in ('public','auth')
   and (p.proname ilike '%workspace%' or p.proname ilike '%member%' or p.proname ilike '%role%')
 order by n.nspname, p.proname;
+
+
+-- 11) Inspect the existing updated_at trigger function body.
+-- Read-only definition lookup; verifies the trigger implementation without executing it.
+select n.nspname as schema_name,
+       p.proname as function_name,
+       pg_get_function_identity_arguments(p.oid) as arguments,
+       p.prosecdef as security_definer,
+       p.proconfig as function_settings,
+       pg_get_functiondef(p.oid) as function_definition
+from pg_proc p
+join pg_namespace n on n.oid = p.pronamespace
+where p.proname = 'vforge_set_updated_at'
+order by n.nspname;
