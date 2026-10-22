@@ -174,3 +174,15 @@ These are direct observations from the screenshots, not a live connector query b
 - There are no confirmed separate Admin and Staff test accounts/two-workspace test fixtures.
 - Browser backup download and end-to-end Google Sheets receipt remain unverified.
 - This blueprint is not executable SQL and has not changed the live database.
+
+
+## Application adapter compatibility audit (2026-10-22)
+
+Inspection of the current release-branch `index.html` confirms the browser Supabase adapter is not yet workspace-aware:
+- `rows(col)` filters by the current `user_id` and `collection`, not by `workspace_id`.
+- `save(col,id,data)` writes only `user_id, collection, id, data, updated_at` and uses conflict target `user_id,collection,id`; it does not supply `workspace_id`.
+- `remove(col,id)` filters by `user_id,collection,id`, not by workspace.
+- The app has no verified membership/role resolution in this adapter.
+- The existing `makeDbBackend(db)` is a separate Firestore-style backend and does not implement Supabase workspace membership.
+
+**Decision:** do not apply a workspace RLS migration to this app version alone. A database-only change would be mismatched with the browser adapter: writes would omit the workspace ID and reads/deletes would remain user-scoped. The app adapter and SQL policies must be delivered as a coordinated release, with a fallback path and acceptance tests. Until then, keep PR #3 draft and do not merge/deploy.
