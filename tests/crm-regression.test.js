@@ -147,3 +147,12 @@ test('Supabase preflight remains read-only and covers required security metadata
   ]) assert.ok(executable.includes(fragment), 'preflight SQL must include ' + fragment);
   assert.doesNotMatch(executable, /\b(insert|update|delete|alter|drop|create|truncate|grant|revoke)\b/, 'preflight SQL must not mutate database state');
 });
+
+
+test('shared-workspace migration checklist remains explicitly review-only', () => {
+  const checklist = fs.readFileSync('docs/SHARED_WORKSPACE_MIGRATION_REVIEW_CHECKLIST.md', 'utf8');
+  assert.match(checklist, /draft \/ not approved for production/i);
+  assert.match(checklist, /Replace—not merely supplement—the existing permissive user-only record policies/);
+  assert.match(checklist, /separate Admin, Staff, and second workspace/);
+  assert.match(checklist, /No database migration has been run by this checklist/);
+});
