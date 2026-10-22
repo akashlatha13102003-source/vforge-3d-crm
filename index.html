@@ -387,7 +387,8 @@ function makeSupabaseBackend(){
   var c=getCloudConfig();
   if(!c.url||!c.anonKey||!cloudSession||!cloudSession.user)return null;
   function rows(col){
-    return cloudFetch('/rest/v1/vforge_records?collection=eq.'+encodeURIComponent(col)+'&select=id,data&order=id.asc')
+    // Defense in depth: explicitly scope reads to the signed-in user as well as relying on RLS.
+    return cloudFetch('/rest/v1/vforge_records?user_id=eq.'+encodeURIComponent(cloudSession.user.id)+'&collection=eq.'+encodeURIComponent(col)+'&select=id,data&order=id.asc')
       .then(function(a){return (a||[]).map(function(r){return Object.assign({id:r.id},r.data||{});});});
   }
   function stopPollers(){cloudPollers.forEach(function(x){clearInterval(x);});cloudPollers=[];}
@@ -411,7 +412,8 @@ function makeSupabaseBackend(){
       });
     },
     remove:function(col,id){
-      return cloudFetch('/rest/v1/vforge_records?collection=eq.'+encodeURIComponent(col)+'&id=eq.'+encodeURIComponent(id),{
+      // Defense in depth: scope deletes to this user's row; RLS remains the security boundary.
+      return cloudFetch('/rest/v1/vforge_records?user_id=eq.'+encodeURIComponent(cloudSession.user.id)+'&collection=eq.'+encodeURIComponent(col)+'&id=eq.'+encodeURIComponent(id),{
         method:'DELETE',headers:cloudHeaders({Prefer:'return=minimal'})
       });
     },
