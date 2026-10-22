@@ -18,7 +18,7 @@ function extractFunction(name) {
 
 const declarations = [
   'productGst', 'saleLines', 'saleRev', 'saleTax', 'saleTaxable',
-  'saleCost', 'saleProfit', 'getStats'
+  'saleCost', 'saleProfit', 'getStats', 'wastageExceedsStock'
 ].map(extractFunction).join('\n');
 
 const context = {
@@ -183,4 +183,12 @@ test('backup validator is read-only and checks all exported collections', () => 
 test('wastage entry rejects missing filament and amounts exceeding available stock', () => {
   assert.match(source, /if\(!e\)return fail\(f,'Choose a valid filament/);
   assert.match(source, /if\(g>e\.left\)return fail\(f,'Wastage exceeds available stock/);
+});
+
+
+test('wastage stock guard rejects amounts above stock and any positive wastage when stock is zero/negative', () => {
+  assert.equal(context.wastageExceedsStock(1000, 896), true, '1000g must be rejected when only 896g remains');
+  assert.equal(context.wastageExceedsStock(896, 896), false, 'exactly available stock may be recorded');
+  assert.equal(context.wastageExceedsStock(1, 0), true, 'positive wastage must be rejected at zero stock');
+  assert.equal(context.wastageExceedsStock(1, -104), true, 'positive wastage must be rejected at negative stock');
 });
