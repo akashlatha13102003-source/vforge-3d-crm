@@ -156,3 +156,13 @@ test('shared-workspace migration checklist remains explicitly review-only', () =
   assert.match(checklist, /separate Admin, Staff, and second workspace/);
   assert.match(checklist, /No database migration has been run by this checklist/);
 });
+
+
+test('workspace rollout runbook requires staging and coordinated app/database cutover', () => {
+  const runbook = fs.readFileSync('docs/SHARED_WORKSPACE_ROLLOUT_RUNBOOK.md', 'utf8');
+  assert.match(runbook, /Status: draft only/);
+  assert.match(runbook, /staging database migration and RLS tests/i);
+  assert.match(runbook, /Replace the four permissive user-only policies/);
+  assert.match(runbook, /Never deploy a workspace-only database policy set while the old user-scoped adapter is still the active production client/);
+  assert.match(runbook, /No production database migration has been applied by this runbook/);
+});
