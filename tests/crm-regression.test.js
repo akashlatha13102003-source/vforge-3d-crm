@@ -116,12 +116,13 @@ test('cloud record reads and deletes are explicitly scoped to the signed-in user
 });
 
 test('JSON backup export includes all eight CRM collections/settings', () => {
-  const exportHandler = source.slice(source.indexOf("data-export=\"json\"") - 100, source.indexOf("data-export=\"json\"") + 1200);
+  const exportStart = source.indexOf("offerFile('vforge-3d-backup.json'");
+  assert.notEqual(exportStart, -1, 'JSON backup export action must exist');
+  const exportHandler = source.slice(exportStart, exportStart + 700);
   for (const key of ['filaments','printers','products','customers','sales','wastage','transfers','settings']) {
     assert.match(exportHandler, new RegExp(key + ':state\\.' + key));
   }
 });
-
 test('Google Sheets payload includes all report groups supported by the CRM', () => {
   const start = source.indexOf('function sheetsPayload(){');
   assert.notEqual(start, -1, 'sheetsPayload must exist');
