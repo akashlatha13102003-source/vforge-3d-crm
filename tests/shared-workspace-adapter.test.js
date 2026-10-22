@@ -18,7 +18,8 @@ function makeSupabase(result = { data: [], error: null }) {
     order(key, value) { calls.push(['order', key, value]); return Promise.resolve(result); },
     upsert(payload, options) { calls.push(['upsert', payload, options]); return this; },
     single() { calls.push(['single']); return Promise.resolve(result); },
-    delete() { calls.push(['delete']); return this; }
+    delete() { calls.push(['delete']); return this; },
+    then(resolve, reject) { return Promise.resolve(result).then(resolve, reject); }
   };
   return { client: { from(name) { calls.push(['from', name]); return chain; } }, calls };
 }
@@ -75,4 +76,24 @@ test('propagates database errors rather than reporting false success', async () 
   const { client } = makeSupabase({ data: null, error: dbError });
   const adapter = createSharedWorkspaceAdapter({ ...base, supabase: client });
   await assert.rejects(() => adapter.list('products'), /RLS denied/);
+});
+
+test('save and delete propagate database errors', async () => {
+  const dbError = new Error('write blocked by RLS');
+  const { client: saveClient } = makeSupabase({ data: null, error: dbError });
+  const saveAdapter = createSharedWorkspaceAdapter({ ...base, supabase: saveClient });
+  await assert.rejects(() => saveAdapter.save('products', { id: 'p1', data: {} }), /write blocked by RLS/);
+
+  const { client: deleteClient } = makeSupabase({ data: null, error: dbError });
+  const deleteAdapter = createSharedWorkspaceAdapter({ ...base, supabase: deleteClient });
+  await assert.rejects(() => deleteAdapter.remove('products', 'p1'), /write blocked by RLS/);
+});
+
+test('a caller-provided role is only adapter metadata; database RLS remains mandatory', () => {
+  const { client } = makeSupabase();
+  const adapter = createSharedWorkspaceAdapter({ ...base, role: 'staff', supabase: client });
+  assert.equal(adapter.role, 'staff');
+  // The adapter performs no role-based authorization decision. The database
+  // must independently enforce membership and write permissions through RLS.
+  assert.equal(typeof adapter.save, 'function');
 });
