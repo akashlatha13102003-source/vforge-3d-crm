@@ -1317,10 +1317,51 @@ function openSettings(){
     +'<div class="field"><label for="st-low">Warn when a filament is below (g)</label><input id="st-low" name="low" type="number" inputmode="numeric" min="0" step="any" value="'+esc(s.lowStock)+'"></div>'
     +'<div class="field"><label for="st-sheets">Google Sheets Web App URL <span class="opt">optional</span></label><input id="st-sheets" name="sheets" type="url" placeholder="https://script.google.com/macros/s/.../exec" value="'+esc(s.googleSheetsUrl||'')+'"></div>'
     +(s.lastSheetsSync?'<div class="small muted">Last sync attempt: '+esc(new Date(s.lastSheetsSync).toLocaleString())+'</div>':'')+'</div>'
-    +'<div class="part"><h3>Export</h3><p class="hint">Take your records into a spreadsheet or keep a backup.</p><div style="display:flex;gap:10px;flex-wrap:wrap"><button type="button" class="btn" data-export="csv">Sales as CSV</button><button type="button" class="btn" data-export="json">Everything as JSON</button></div></div>'
+    +'<div class="part"><h3>Export &amp; backup tools</h3><p class="hint">Export your records or validate a backup file without changing live data.</p><div style="display:flex;gap:10px;flex-wrap:wrap"><button type="button" class="btn" data-export="csv">Sales as CSV</button><button type="button" class="btn" data-export="json">Everything as JSON</button><button type="button" class="btn" data-backup-preview>Validate backup</button></div><p class="small muted">Validation only: this tool never imports or overwrites CRM records.</p></div>'
     +'</div>'+foot('',false,'Save settings');
   var form=openDrawer('Settings',html);
   form.addEventListener('click',function(e){
+    var preview=e.target.closest('[data-backup-preview]');
+    if(preview){
+      var picker=document.createElement('input');
+      picker.type='file';picker.accept='.json,application/json';picker.style.display='none';
+      document.body.appendChild(picker);
+      picker.addEventListener('change',function(){
+        var file=picker.files&&picker.files[0];picker.remove();if(!file)return;
+        file.text().then(function(raw){
+          var data;
+          try{data=JSON.parse(raw);}catch(err){toast('Invalid JSON file. No data was changed.',true);return;}
+          var groups=['filaments','printers','products','customers','sales','wastage','transfers'];
+          var errors=[],warnings=[],counts={};
+          if(!data||typeof data!=='object'||Array.isArray(data)){toast('Backup must contain a JSON object. No data was changed.',true);return;}
+          if(data.schemaVersion!==2)warnings.push('Schema version is '+esc(data.schemaVersion==null?'missing':data.schemaVersion)+'; this CRM currently exports version 2.');
+          groups.forEach(function(k){
+            if(!Array.isArray(data[k]))errors.push(k+' must be an array.');
+            else{
+              counts[k]=data[k].length;
+              var ids={},dupes=0;
+              data[k].forEach(function(row){
+                if(!row||typeof row!=='object'||Array.isArray(row)){errors.push(k+' contains a record that is not an object.');return;}
+                if(row.id!=null){var id=String(row.id);if(ids[id])dupes++;ids[id]=true;}
+              });
+              if(dupes)warnings.push(k+' has '+dupes+' duplicate record ID(s).');
+            }
+          });
+          if(!data.settings||typeof data.settings!=='object'||Array.isArray(data.settings))errors.push('settings must be an object.');
+          else counts.settings=Object.keys(data.settings).length+' settings';
+          var summary=groups.map(function(k){return '<tr><td>'+esc(k)+'</td><td style="text-align:right">'+(counts[k]==null?'—':counts[k])+'</td></tr>';}).join('');
+          summary+='<tr><td>settings</td><td style="text-align:right">'+esc(counts.settings==null?'—':counts.settings)+'</td></tr>';
+          var html='<div class="part"><h3>'+esc(file.name)+'</h3><p class="hint">File size: '+(file.size/1024).toFixed(1)+' KB'+(data.exportedAt?' · Exported: '+esc(data.exportedAt):'')+'</p><p><strong>'+(errors.length?'Validation failed':warnings.length?'Structure looks readable; review warnings':'Structure looks valid')+'</strong></p><table class="data-table"><thead><tr><th>Data group</th><th style="text-align:right">Count</th></tr></thead><tbody>'+summary+'</tbody></table>';
+          if(errors.length)html+='<div class="notice error"><strong>Errors</strong><ul>'+errors.map(function(x){return '<li>'+esc(x)+'</li>';}).join('')+'</ul></div>';
+          if(warnings.length)html+='<div class="notice"><strong>Warnings</strong><ul>'+warnings.map(function(x){return '<li>'+x+'</li>';}).join('')+'</ul></div>';
+          html+='<p class="hint">This is a read-only preview. No records were imported, merged, replaced, or deleted.</p></div>'+foot('',false,'Close');
+          var previewForm=openDrawer('Backup validation',html);
+          wireSubmit(previewForm,function(){closeDrawer();return true;});
+        }).catch(function(){picker.remove();toast('Could not read this file. No data was changed.',true);});
+      },{once:true});
+      picker.click();
+      return;
+    }
     var b=e.target.closest('[data-export]');
     if(b){
       if(b.dataset.export==='csv')offerFile('vforge-3d-sales.csv',salesCsv());
