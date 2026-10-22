@@ -1284,8 +1284,25 @@ function salesCsv(){
   return [head.join(',')].concat(rows).join('\n');
 }
 function offerFile(name,data){
-  if(!dlCap){toast('Downloads are not available here.',true);return;}
-  Promise.resolve(dlCap.save({filename:name,data:data})).then(function(){toast('File saved');},function(e){if(e&&e.code==='declined')return;toast('Could not save the file.',true);});
+  if(dlCap&&typeof dlCap.save==='function'){
+    Promise.resolve(dlCap.save({filename:name,data:data})).then(function(){toast('File saved');},function(e){
+      if(e&&e.code==='declined')return;
+      browserOfferFile(name,data);
+    });
+    return;
+  }
+  browserOfferFile(name,data);
+}
+function browserOfferFile(name,data){
+  try{
+    var blob=new Blob([data],{type:/\\.json$/i.test(name)?'application/json;charset=utf-8':'text/csv;charset=utf-8'});
+    var url=URL.createObjectURL(blob);
+    var a=document.createElement('a');
+    a.href=url;a.download=name;a.style.display='none';
+    document.body.appendChild(a);a.click();a.remove();
+    setTimeout(function(){URL.revokeObjectURL(url);},1000);
+    toast('Backup download started. Check your browser downloads.');
+  }catch(e){toast('Browser could not start the download. No cloud data was changed.',true);}
 }
 function openSettings(){
   var s=state.settings,cc=getCloudConfig();
