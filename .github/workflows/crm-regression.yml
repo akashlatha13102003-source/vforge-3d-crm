@@ -1,0 +1,25 @@
+name: CRM regression checks
+
+on:
+  push:
+    branches:
+      - main
+      - release/candidate-phase7-gst-backup
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Run CRM business-logic regression checks
+        run: node tests/crm-regression.test.js
+      - name: Run isolated workspace adapter contract tests
+        run: node tests/shared-workspace-adapter.test.js
