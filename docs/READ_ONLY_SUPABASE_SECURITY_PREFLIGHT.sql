@@ -68,3 +68,54 @@ order by duplicate_count desc, workspace_id, collection, id;
 
 -- Do not paste access tokens, passwords, publishable keys, or service-role keys
 -- into an issue or chat. The results above contain schema metadata and counts only.
+
+
+-- 7) Null workspace IDs and record ownership distribution. These must be reviewed
+-- before considering any NOT NULL constraint or ownership migration.
+select
+  count(*) as total_rows,
+  count(*) filter (where workspace_id is null) as null_workspace_rows,
+  count(distinct user_id) as distinct_record_owners,
+  count(distinct workspace_id) as distinct_workspaces
+from public.vforge_records;
+
+select user_id, workspace_id, count(*) as row_count
+from public.vforge_records
+group by user_id, workspace_id
+order by workspace_id, user_id;
+
+-- 8) Indexes and triggers that may affect the migration.
+select schemaname, tablename, indexname, indexdef
+from pg_indexes
+where schemaname = 'public'
+  and tablename in ('vforge_records','vforge_workspaces','vforge_workspace_members')
+order by tablename, indexname;
+
+select
+  event_object_table as table_name,
+  trigger_name,
+  action_timing,
+  event_manipulation,
+  action_statement
+from information_schema.triggers
+where event_object_schema = 'public'
+  and event_object_table in ('vforge_records','vforge_workspaces','vforge_workspace_members')
+order by event_object_table, trigger_name, event_manipulation;
+
+-- 9) Table grants (separate from RLS policies).
+select grantee, table_name, privilege_type, is_grantable
+from information_schema.role_table_grants
+where table_schema = 'public'
+  and table_name in ('vforge_records','vforge_workspaces','vforge_workspace_members')
+order by table_name, grantee, privilege_type;
+
+-- 10) Functions potentially used by RLS or workspace access.
+select n.nspname as schema_name, p.proname as function_name,
+       pg_get_function_identity_arguments(p.oid) as arguments,
+       p.prosecdef as security_definer,
+       p.proconfig as function_settings
+from pg_proc p
+join pg_namespace n on n.oid = p.pronamespace
+where n.nspname in ('public','auth')
+  and (p.proname ilike '%workspace%' or p.proname ilike '%member%' or p.proname ilike '%role%')
+order by n.nspname, p.proname;
