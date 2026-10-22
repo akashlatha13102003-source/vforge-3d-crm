@@ -133,3 +133,44 @@ These are direct observations from the screenshots, not a live connector query b
 
 
 - Full trigger definition was returned by the user's read-only query (2026-10-22): `public.vforge_set_updated_at()` is a PL/pgSQL trigger function that only sets `NEW.updated_at = now()` and returns `NEW`. It is not SECURITY DEFINER. This function is a simple timestamp trigger and does not implement authorization.
+
+
+## Proposed migration blueprint (design only; not executable SQL)
+
+### Target record model
+
+- Keep `vforge_records.user_id` as a required audit/last-writer identity for compatibility, but do not use it as the shared-record uniqueness key.
+- Introduce a reviewed unique constraint/index on `(workspace_id, collection, id)` only after verifying no NULL workspace IDs and no duplicates (the user-provided preflight showed 0 NULL workspace IDs and 0 duplicate candidate keys at inspection time).
+- Change the application adapter in the same release to read by explicit `workspace_id`, upsert on `workspace_id,collection,id`, and scope deletes by `workspace_id,collection,id`.
+- Keep the existing primary key `(user_id,collection,id)` during the first additive stage. A second, separately reviewed stage can decide whether to replace it after checking dependencies. Do not drop it merely to enable shared upserts; a unique index on the workspace identity is sufficient for the new upsert target.
+- Ensure all existing records retain their IDs and JSON payloads. Do not rewrite or regenerate IDs.
+
+### Membership and authorization model
+
+- Resolve an explicit active workspace and membership role after authentication. If membership lookup fails or returns no membership, fail closed; never default to Admin.
+- SELECT on records: user must be a member of the row's workspace.
+- INSERT: member must be Admin for `workspace_id`; `user_id` must equal `auth.uid()` unless a separately documented audit model is approved.
+- UPDATE: Admin membership must be valid for the existing row and for the resulting row (`USING` and `WITH CHECK`); keep the workspace identity immutable during ordinary updates.
+- DELETE: Admin membership in the row's workspace.
+- Workspace table: member can read their own workspace; only an Admin may update workspace metadata. Workspace creation must be an explicit trusted bootstrap action.
+- Membership table: members can read membership information needed for their own workspace; only an authorized Admin can add/remove/change members. A newly invited Staff member must not be able to self-promote.
+- RLS on `vforge_workspaces` and `vforge_workspace_members` currently has zero policies in the supplied snapshot. Add a reviewed access model for both; do not assume browser access works today.
+- Avoid RLS recursion by using a narrowly scoped membership-check helper if required. Any `SECURITY DEFINER` helper must use a fixed `search_path`, schema-qualified references, least-privilege execution grants, and no dynamic SQL. Its behavior and grants must be tested with real JWTs.
+- The existing `vforge_set_updated_at()` trigger only sets `NEW.updated_at = now()`; preserve it.
+
+### Safe release phases
+
+1. **Snapshot and stop conditions:** take a fresh backup/export; record all row keys and payload hashes. Abort on changed counts, NULL workspace IDs, duplicate workspace keys, unexpected owner/workspace pairs, or unreviewed dependent foreign keys.
+2. **Additive database phase:** add a unique workspace-record index concurrently where supported (or in a maintenance window if the migration runner requires a transaction); do not drop the current primary key. Add/verify only required grants and helper function after review.
+3. **Policy phase:** in one reviewed transaction, replace the four existing permissive user-only policies on `vforge_records` with the workspace-member/Admin rules, and add policies for workspace and membership tables. Verify exact current policy names immediately before applying; do not use guessed names.
+4. **App phase:** deploy a role-aware adapter that resolves membership, scopes every operation to workspace, uses the workspace conflict target, and fails closed. The app must not claim role security until database RLS is in place.
+5. **Verification:** test with separate Admin and Staff JWTs and two workspaces using both the UI and direct PostgREST calls. Confirm Staff write/delete requests are rejected, cross-workspace reads return no rows, Admin operations work, and all 98 existing rows remain unchanged.
+6. **Rollback:** stop writes and restore the previous app build first if app behavior fails. Revert only the new policies/helper/grants/index after confirming the rollback does not expose data; restore prior policy definitions exactly from the captured snapshot. Never restore by deleting or replacing record payloads. Keep the original database backup outside the project.
+
+### Release blockers that remain
+
+- The complete index output was partially clipped in the screenshot; names are visible but full index definitions are not all legible. Export/copy the index query result before deciding whether a new unique index is required.
+- The current app's live deployment has not been tested against the target workspace schema.
+- There are no confirmed separate Admin and Staff test accounts/two-workspace test fixtures.
+- Browser backup download and end-to-end Google Sheets receipt remain unverified.
+- This blueprint is not executable SQL and has not changed the live database.
