@@ -11,9 +11,9 @@ function extractFunction(name) {
   const start = source.indexOf('function ' + name + '(');
   assert.notEqual(start, -1, 'function ' + name + ' must exist in index.html');
   // In this file, the declaration's closing brace is on its own unindented line.
-  const end = source.indexOf('\n}', start);
+  const end = source.indexOf('\nfunction ', start + 10);
   assert.notEqual(end, -1, 'function ' + name + ' must have a closing brace');
-  return source.slice(start, end + 2);
+  return source.slice(start, end).trimEnd();
 }
 
 const declarations = [
