@@ -213,3 +213,27 @@ The browser adapter should not be switched to workspace mode until the database 
 - Sheets sync UI continues to describe request-queued versus receipt-confirmed states accurately.
 
 This contract intentionally does not specify final executable policy SQL yet. The safe bootstrap design depends on how the first Admin and future Staff memberships will be provisioned without exposing privileged credentials in the browser.
+
+
+## Bootstrap decision and key schema constraint
+
+### Recommended bootstrap approach (pending approval and staging validation)
+
+Use the existing verified workspace membership row as the initial Admin membership; do not create a public signup path that grants Admin. For future members, provision membership through an authenticated, server-side Supabase Edge Function (or another trusted server-side admin workflow) that verifies the caller is an Admin of the target workspace before inserting/updating membership. Never put a service-role key in the browser. The existing Admin should invite Staff through that trusted workflow; direct client writes to `vforge_workspace_members` must not be allowed for role changes.
+
+A narrowly scoped SQL membership helper may be used by RLS to avoid recursive membership-table policies. If implemented as `SECURITY DEFINER`, it must have a fixed safe `search_path`, fully qualified table references, no dynamic SQL, minimal execution grants, and explicit tests for anon/authenticated/Admin/Staff/no-membership cases. The helper must not itself allow a caller to choose or self-assign a role.
+
+### Important primary-key finding
+
+The existing primary key `(user_id, collection, id)` is incompatible with a fully general multi-workspace model: the same user could legitimately create the same `collection/id` in two different workspaces, but the current key would collide. A unique index on `(workspace_id, collection, id)` alone does not remove that cross-workspace collision risk. The final migration should therefore plan to replace the primary key with `(workspace_id, collection, id)` (after validating all rows, nullability, dependent foreign keys, and app writes) or adopt an equivalent workspace-scoped identity design. Do not leave the existing PK in place and describe the schema as fully workspace-safe.
+
+### Migration order adjustment
+
+1. Keep the app and live DB unchanged while the adapter is built behind an explicit feature flag / non-production configuration.
+2. In a staging Supabase project, create the reviewed helper and policies and test Admin/Staff JWTs before production.
+3. Make `workspace_id` required only after confirming the live null count is zero immediately before migration.
+4. Create/verify the workspace-scoped uniqueness, migrate primary key in a reviewed transaction/maintenance window, and check all FK dependencies before dropping the old PK.
+5. Deploy the matching app adapter and database migration as a coordinated release, with the old app not pointed at the new policy set.
+6. Run the acceptance matrix and compare all existing record IDs and payloads before enabling production traffic.
+
+This recommendation is a design decision, not an applied migration. It needs staging validation and review of the complete index definitions/dependencies before executable SQL is finalized.
