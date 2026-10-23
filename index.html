@@ -464,19 +464,13 @@ function errMsg(e){
   if(e&&e.status===403)return 'Cloud access denied. Check the Supabase RLS policies.';
   return (e&&e.message)||'Could not save. Try again.';
 }
-var autoSheetsTimer=null,autoSheetsBusy=false,autoSheetsQueued=false;
+// Google Sheets sync is intentionally manual until Apps Script can return
+// a verifiable receipt to this browser. Auto-sync over an opaque no-cors
+// transport can create repeated report writes without proving they succeeded.
 function queueAutoSheetsSync(reason){
-  var url=(state.settings.googleSheetsUrl||'').trim();
-  if(!url||!state.ready)return;
-  clearTimeout(autoSheetsTimer);
-  autoSheetsTimer=setTimeout(function(){
-    if(autoSheetsBusy){autoSheetsQueued=true;return;}
-    autoSheetsBusy=true;
-    syncGoogleSheets(true).then(function(){
-      autoSheetsBusy=false;
-      if(autoSheetsQueued){autoSheetsQueued=false;queueAutoSheetsSync('queued');}
-    },function(){autoSheetsBusy=false;});
-  },900);
+  // Keep this compatibility hook for existing save flows, but never send
+  // background report writes. Use the Reports > Sync to Google Sheets action.
+  return;
 }
 function syncStateAfterSave(col){
   return Promise.resolve().then(function(){return backend.fetch(col);}).then(function(docs){
@@ -1480,9 +1474,8 @@ function onDocs(col,docs){
   if(!state.ready&&COLS.every(function(c){return state.loaded[c];}))state.ready=true;
   if(state.ready){
     renderContent();setStamp();
-    // Sync only after the live/backend update has reached local state.
-    // This prevents Google Sheets from receiving the previous inventory snapshot.
-    if(['filaments','products','sales','customers','wastage','transfers'].indexOf(col)>=0)queueAutoSheetsSync('backend-update:'+col);
+    // Google Sheets sync is manual until the endpoint supports verifiable receipts.
+    // This avoids repeated background writes and misleading "queued" confirmations.
   }
 }
 function boot(){
