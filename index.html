@@ -769,10 +769,12 @@ function vFilament(){
   var purchases=state.filaments.slice().sort(function(a,b){return (b.date||'').localeCompare(a.date||'')||(b.createdAt||'').localeCompare(a.createdAt||'');});
   var body=purchases.map(function(p){
     var g=num(p.weight)*num(p.spools),cpg=g>0?num(p.total)/g:0;
-    return '<tr class="click" data-open="purchase:'+esc(p.id)+'"><td>'+esc(fmtDate(p.date))+'</td><td><button class="linkish" data-open="purchase:'+esc(p.id)+'"><span class="dot" style="background:'+safeHex(p.hex)+'"></span>'+esc(fname(p))+'</button></td><td class="hide-sm">'+num(p.spools)+' \u00d7 '+fmtG(p.weight)+'</td><td class="num">'+money(p.total)+'</td><td class="num hide-sm">'+money(cpg,2)+'</td><td class="hide-sm muted">'+esc(p.supplier||'')+'</td></tr>';
+    var colours=Array.isArray(p.colours)&&p.colours.length?p.colours:[{name:p.colour||'Colour',hex:p.hex}];
+    var palette='<span class="dots" aria-label="'+esc(colours.map(function(c){return c.name||'';}).join(', '))+'">'+colours.map(function(c){return '<span class="dot" title="'+esc(c.name||'Colour')+' · '+esc(safeHex(c.hex))+'" style="background:'+safeHex(c.hex)+'"></span>';}).join('')+'</span>';
+    return '<tr class="click" data-open="purchase:'+esc(p.id)+'"><td>'+esc(fmtDate(p.date))+'</td><td><button class="linkish" data-open="purchase:'+esc(p.id)+'">'+esc(fname(p))+'</button></td><td>'+esc(p.filamentType||'Single Colour')+'</td><td>'+palette+'</td><td class="hide-sm">'+num(p.spools)+' \u00d7 '+fmtG(p.weight)+'</td><td class="num">'+money(p.total)+'</td><td class="num hide-sm">'+money(cpg,2)+'</td><td class="hide-sm muted">'+esc(p.supplier||'')+'</td></tr>';
   }).join('');
   return '<section class="sec"><div class="sec-head"><h2>On the shelf</h2></div>'+rows.map(function(e){return spoolRow(e,low);}).join('')+'</section>'
-    +'<section class="sec"><div class="sec-head"><h2>Purchases</h2></div><div style="overflow-x:auto"><table><thead><tr><th>Date</th><th>Filament</th><th class="hide-sm">Spools</th><th class="num">Paid</th><th class="num hide-sm">Per gram</th><th class="hide-sm">Bought from</th></tr></thead><tbody>'+body+'</tbody></table></div></section>';
+    +'<section class="sec"><div class="sec-head"><h2>Purchases</h2></div><div style="overflow-x:auto"><table><thead><tr><th>Date</th><th>Filament</th><th>Colour type</th><th>Colour palette</th><th class="hide-sm">Spools</th><th class="num">Paid</th><th class="num hide-sm">Per gram</th><th class="hide-sm">Bought from</th></tr></thead><tbody>'+body+'</tbody></table></div></section>';
 }
 function vProducts(){
   if(!state.products.length)return empty('No products yet','A product records the grams of filament each piece uses, its details and your listed price, so profit is worked out on every sale.',state.filaments.length?'new-product':'new-purchase',state.filaments.length?'Add a product':'Log filament first');
