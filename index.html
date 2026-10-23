@@ -1271,7 +1271,7 @@ function syncGoogleSheets(silent){
     }
 
     // Browser transport is opaque (sendBeacon/no-cors), so do not label this as a confirmed sync.
-    if(!silent)toast('Request queued. Google Sheets receipt is not confirmed by this browser connection.',true);
+    if(!silent)toast('Sync request sent. Check the Google Sheets report tabs to confirm the latest data.',false);
     resolve({queued:true,confirmed:false});
   });
 }
