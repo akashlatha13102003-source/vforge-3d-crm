@@ -1140,9 +1140,23 @@ function openCustomer(id){
 /* ---------- reports + Google Sheets ---------- */
 function reportFilaments(){
   return Array.from(getStats().values()).sort(byName).map(function(e){
+    // Colour metadata comes from the most recent purchase for this stock key.
+    // Existing records without metadata remain valid and receive safe defaults.
+    var purchases=state.filaments.filter(function(p){return (p.key||fkey(p))===e.key;}).sort(function(a,b){
+      return ((b.date||'')+'|'+(b.createdAt||'')).localeCompare((a.date||'')+'|'+(a.createdAt||''));
+    });
+    var latest=purchases[0]||{};
+    var colours=Array.isArray(latest.colours)&&latest.colours.length?latest.colours:[{name:latest.colour||e.colour||'',hex:safeHex(latest.hex||e.hex)}];
+    var primary=colours[0]||{name:latest.colour||e.colour||'',hex:safeHex(latest.hex||e.hex)};
+    var extras=colours.slice(1);
     return {
       'Brand':e.brand||'Generic',
       'Material':e.material||'',
+      'Colour Type':latest.filamentType||'Single Colour',
+      'Primary Colour':primary.name||e.colour||'',
+      'Primary Colour Hex':safeHex(primary.hex||latest.hex||e.hex),
+      'Additional Colours':extras.map(function(c){return c.name||'';}).filter(Boolean).join(', '),
+      'Additional Colour Hex Codes':extras.map(function(c){return (c.name||'')+'='+safeHex(c.hex);}).filter(function(x){return x.indexOf('=')>0;}).join(', '),
       'Colour':e.colour||'',
       'Purchased (g)':Math.round(e.bought*10)/10,
       'Used for products made (g)':Math.round(e.productionUsed*10)/10,
