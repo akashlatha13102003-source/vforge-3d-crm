@@ -221,7 +221,7 @@ tr.click:hover td{background:color-mix(in srgb,var(--surface) 70%,transparent)}
 'use strict';
 
 /* ---------- helpers ---------- */
-var COLS=['filaments','printers','products','customers','sales','wastage','transfers','settings'];
+var COLS=['filaments','printers','products','customers','sales','wastage','transfers','supplies','settings'];
 function $(s,r){return (r||document).querySelector(s);}
 function $$(s,r){return Array.prototype.slice.call((r||document).querySelectorAll(s));}
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
@@ -254,7 +254,7 @@ var ICONS={
 
 /* ---------- state ---------- */
 var DEFAULT_RATE=8;
-var state={filaments:[],printers:[],products:[],customers:[],sales:[],wastage:[],transfers:[],settings:{currency:'INR',lowStock:200,powerRate:DEFAULT_RATE,googleSheetsUrl:'',lastSheetsSync:''},
+var state={filaments:[],printers:[],products:[],customers:[],sales:[],wastage:[],transfers:[],supplies:[],settings:{currency:'INR',lowStock:200,powerRate:DEFAULT_RATE,googleSheetsUrl:'',lastSheetsSync:''},
   loaded:{},ready:false,view:'overview',period:'30',q:'',storage:'workspace'};
 var ver=0,statsVer=-1,statsCache=null,backend=null,dlCap=null;
 
@@ -488,7 +488,7 @@ function save(col,id,data){
   return Promise.resolve().then(function(){return backend.save(col,id,data);}).then(function(){
     if(COLS.indexOf(col)>=0&&col!=='settings'){
       return syncStateAfterSave(col).then(function(){
-        if(['filaments','products','sales','customers','wastage','transfers'].indexOf(col)>=0){
+        if(['filaments','products','sales','customers','wastage','transfers','supplies'].indexOf(col)>=0){
           queueAutoSheetsSync('saved:'+col);
         }
         return true;
@@ -662,7 +662,7 @@ function toast(msg,bad){
 }
 
 /* ---------- rendering: shell ---------- */
-var NAV=[['overview','Overview','overview',''],['printers','Printers','printers',''],['filament','Filament','filament','1'],['products','Products','products','2'],['sales','Sales','sales','3'],['customers','Customers','customers',''],['wastage','Wastage','wastage',''],['transfers','Branch Transfers','transfers',''],['reports','Reports','overview','']];
+var NAV=[['overview','Overview','overview',''],['printers','Printers','printers',''],['filament','Filament','filament','1'],['products','Products','products','2'],['sales','Sales','sales','3'],['customers','Customers','customers',''],['wastage','Wastage','wastage',''],['transfers','Branch Transfers','transfers',''],['supplies','Consumables','products',''],['reports','Reports','overview','']];
 function renderNav(){
   $('#nav').innerHTML=NAV.map(function(n){
     return '<button data-view="'+n[0]+'"'+(state.view===n[0]?' aria-current="page"':'')+'>'+ICONS[n[2]]+'<span>'+n[1]+'</span>'+(n[3]?'<span class="step" aria-hidden="true">'+n[3]+'</span>':'')+'</button>';
@@ -677,7 +677,7 @@ function renderNotice(){
 }
 function searchBox(ph){return '<label class="search"><span class="sr">Search</span><input id="q" type="search" placeholder="'+esc(ph)+'" value="'+esc(state.q)+'" autocomplete="off"></label>';}
 function renderToolbar(){
-  var v=state.view,T={overview:'Overview',printers:'Printers',filament:'Filament',products:'Products',sales:'Sales',customers:'Customers',reports:'Reports',wastage:'Wastage',transfers:'Branch Transfers'},right='';
+  var v=state.view,T={overview:'Overview',printers:'Printers',filament:'Filament',products:'Products',sales:'Sales',customers:'Customers',reports:'Reports',wastage:'Wastage',transfers:'Branch Transfers',supplies:'Consumables & Supplies'},right='';
   if(v==='overview')right='<div class="seg" role="group" aria-label="Period"><button data-act="period:30" aria-pressed="'+(state.period==='30')+'">Last 30 days</button><button data-act="period:all" aria-pressed="'+(state.period==='all')+'">All time</button></div><button class="btn" data-act="settings">Settings</button>';
   if(v==='printers')right='<button class="btn" data-act="settings">Electricity price</button><button class="btn primary" data-act="new-printer">Add printer</button>';
   if(v==='filament')right='<button class="btn primary" data-act="new-purchase">Log purchase</button>';
@@ -685,7 +685,7 @@ function renderToolbar(){
   if(v==='sales')right=searchBox('Search sales')+'<button class="btn primary" data-act="new-sale">Record sale</button>';
   if(v==='customers')right=searchBox('Search customers')+'<button class="btn primary" data-act="new-customer">Add customer</button>';
   if(v==='wastage')right='<button class="btn primary" data-act="new-wastage">Log wastage</button>';
-  if(v==='transfers')right='<button class="btn primary" data-act="new-transfer">Record transfer</button>'; 
+  if(v==='transfers')right='<button class="btn primary" data-act="new-transfer">Record transfer</button>';\n  if(v==='supplies')right='<button class="btn" data-act="use-supply">Record usage</button><button class="btn primary" data-act="buy-supply">Log purchase</button>'; 
   if(v==='reports')right='<button class="btn" data-act="test-sheets">Test Google Sheets</button><button class="btn primary" data-act="sync-sheets">Sync to Google Sheets</button><button class="btn" data-act="export-report-csv">Export reports CSV</button>';
   var refresh='<span class="small muted hide-sm" id="stamp"></span><button class="btn" id="refresh-btn" data-act="refresh" title="Load the latest data">'+ICONS.refresh+'<span>Refresh</span></button>';
   $('#toolbar').innerHTML='<h1>'+T[v]+'</h1><div class="bar-right">'+refresh+right+'</div>';
@@ -694,7 +694,7 @@ function renderToolbar(){
 function renderContent(){
   var c=$('#content');
   if(!state.ready){c.innerHTML='<p class="muted">Loading your workspace\u2026</p>';return;}
-  var fn={overview:vOverview,printers:vPrinters,filament:vFilament,products:vProducts,sales:vSales,customers:vCustomers,reports:vReports,wastage:vWastage,transfers:vTransfers}[state.view];
+  var fn={overview:vOverview,printers:vPrinters,filament:vFilament,products:vProducts,sales:vSales,customers:vCustomers,reports:vReports,wastage:vWastage,transfers:vTransfers,supplies:vSupplies}[state.view];
   c.innerHTML=fn();
 }
 function render(){renderNav();renderNotice();renderToolbar();renderContent();}
@@ -800,7 +800,7 @@ function vSales(){
   return '<div style="overflow-x:auto"><table><thead><tr><th class="hide-sm">Date</th><th>Customer</th><th class="hide-sm">Product</th><th class="num hide-sm">Qty</th><th class="num">Total</th><th class="num hide-sm">Profit</th><th>Payment</th></tr></thead><tbody>'+body+'</tbody></table></div>';
 }
 
-function vWastage(){
+function supplyTotals(item){var bought=(item.purchases||[]).reduce(function(t,x){return t+num(x.quantity);},0);var used=(item.usage||[]).reduce(function(t,x){return t+num(x.quantity);},0);var spend=(item.purchases||[]).reduce(function(t,x){return t+num(x.total);},0);return {bought:bought,used:used,left:bought-used,spend:spend,unitCost:bought?spend/bought:0};}\nfunction vSupplies(){\n var items=state.supplies.slice().sort(byName);\n if(!items.length)return empty('No supplies tracked yet','Track glue, keychains, packaging boxes, covers, labels, tape and other non-filament stock.','buy-supply','Log first purchase');\n return '<div style="overflow-x:auto"><table><thead><tr><th>Item</th><th>Category</th><th class="num">Purchased</th><th class="num">Used</th><th class="num">In stock</th><th class="num">Purchase spend</th><th>Unit</th><th></th></tr></thead><tbody>'+items.map(function(p){var t=supplyTotals(p);return '<tr><td><strong>'+esc(p.name)+'</strong>'+(p.notes?'<div class="small muted">'+esc(p.notes)+'</div>':'')+'</td><td>'+esc(p.category||'Other')+'</td><td class="num">'+t.bought+'</td><td class="num">'+t.used+'</td><td class="num">'+t.left+(t.left<=num(p.lowStock)?' <span class="tag low">Low</span>':'')+'</td><td class="num">'+money(t.spend)+'</td><td>'+esc(p.unit||'pcs')+'</td><td><button class="btn" data-act="use-supply:'+esc(p.id)+'">Use</button> <button class="btn danger" data-act="delete-supply:'+esc(p.id)+'">Delete</button></td></tr>';}).join('')+'</tbody></table></div><p class="small muted" style="margin-top:12px">Stock = purchased quantity − recorded usage. Purchase and usage history are saved with each item.</p>';\n}\nfunction vWastage(){
  var list=state.wastage.slice().sort(function(a,b){return (b.date||'').localeCompare(a.date||'');});
  if(!list.length)return empty('No wastage recorded','Log damaged, purged or otherwise wasted filament. Wastage reduces available filament stock.','new-wastage','Log wastage');
  return '<div style="overflow-x:auto"><table><thead><tr><th>Date</th><th>Filament</th><th class="num">Grams</th><th>Reason</th><th>Notes</th><th></th></tr></thead><tbody>'+list.map(function(w){var S=getStats(),e=S.get(w.filamentKey);return '<tr><td>'+esc(fmtDate(w.date))+'</td><td>'+esc(e?e.name:(w.filamentName||w.filamentKey))+'</td><td class="num">'+fmtG(w.grams)+'</td><td>'+esc(w.reason||'')+'</td><td>'+esc(w.notes||'')+'</td><td><button class="btn danger" data-act="delete-wastage:'+esc(w.id)+'">Delete</button></td></tr>';}).join('')+'</tbody></table></div>';
@@ -811,7 +811,7 @@ function vTransfers(){
  return '<div style="overflow-x:auto"><table><thead><tr><th>Date</th><th>Branch</th><th>Product</th><th class="num">Qty</th><th class="num">Price</th><th>Notes</th><th></th></tr></thead><tbody>'+list.map(function(t){return '<tr><td>'+esc(fmtDate(t.date))+'</td><td>'+esc(t.branch)+'</td><td>'+esc(t.productName)+'</td><td class="num">'+Math.max(1,num(t.quantity||1))+'</td><td class="num">'+(t.price==null?'N/A':money(t.price))+'</td><td>'+esc(t.notes||'')+'</td><td><button class="btn danger" data-act="delete-transfer:'+esc(t.id)+'">Delete</button></td></tr>';}).join('')+'</tbody></table></div>';
 }
 function wastageExceedsStock(grams,available){return !(available>0)||grams>available;}
-function openWastage(){
+function openSupply(mode,id){\n var item=id?state.supplies.find(function(x){return x.id===id;}):null;\n if(mode==='use'&&!item){var opts=state.supplies.slice().sort(byName);if(!opts.length){toast('Log a supply purchase first.',true);return;}item=opts[0];}\n var html='';\n if(mode==='buy'){html='<div class="dbody"><div class="field"><label>Item name</label><input name="name" required placeholder="e.g. Super glue, keychain, packaging box" value="'+esc(item?item.name:'')+'"></div><div class="grid2"><div class="field"><label>Category</label><select name="category"><option>Adhesive</option><option>Keychains / finished stock</option><option>Packaging</option><option>Covers & bags</option><option>Tools</option><option>Labels & tape</option><option>Other</option></select></div><div class="field"><label>Unit</label><select name="unit"><option>pcs</option><option>boxes</option><option>packs</option><option>bottles</option><option>rolls</option><option>kg</option><option>g</option><option>litres</option></select></div></div><div class="grid2"><div class="field"><label>Quantity purchased</label><input name="quantity" type="number" min="0.01" step="any" required></div><div class="field"><label>Total paid</label><input name="total" type="number" min="0" step="any" required></div></div><div class="grid2"><div class="field"><label>Purchase date</label><input name="date" type="date" value="'+today()+'" required></div><div class="field"><label>Supplier (optional)</label><input name="supplier"></div></div><div class="field"><label>Low-stock alert quantity</label><input name="lowStock" type="number" min="0" step="any" value="5"></div><div class="field"><label>Notes (optional)</label><textarea name="notes"></textarea></div></div>'+foot('',false,'Save purchase');}\n else {var opts=state.supplies.slice().sort(byName);html='<div class="dbody"><div class="field"><label>Item</label><select name="item" required>'+opts.map(function(x){var t=supplyTotals(x);return '<option value="'+esc(x.id)+'" '+(item&&x.id===item.id?'selected':'')+'>'+esc(x.name)+' — '+t.left+' '+esc(x.unit||'pcs')+' left</option>';}).join('')+'</select></div><div class="grid2"><div class="field"><label>Quantity used</label><input name="quantity" type="number" min="0.01" step="any" required></div><div class="field"><label>Date</label><input name="date" type="date" value="'+today()+'" required></div></div><div class="field"><label>Purpose / used for</label><input name="purpose" placeholder="e.g. order number, packing batch"></div><div class="field"><label>Notes (optional)</label><textarea name="notes"></textarea></div></div>'+foot('',false,'Record usage');}\n var f=openDrawer(mode==='buy'?'Log supply purchase':'Record supply usage',html);wireSubmit(f,function(){if(mode==='buy'){var name=ctl(f,'name').value.trim(),q=num(ctl(f,'quantity').value),total=num(ctl(f,'total').value);if(!name||!(q>0)||total<0)return fail(f,'Enter an item name, a quantity above zero and a valid total paid.');var p=state.supplies.find(function(x){return x.name.trim().toLowerCase()===name.toLowerCase();});var purchase={date:ctl(f,'date').value||today(),quantity:q,total:total,supplier:ctl(f,'supplier').value.trim()};if(p){p=Object.assign({},p,{purchases:(p.purchases||[]).concat([purchase]),lowStock:num(ctl(f,'lowStock').value),notes:ctl(f,'notes').value.trim()||p.notes});return save('supplies',p.id,p).then(function(ok){if(ok)toast('Supply purchase recorded');return ok;});}p={id:backend.newId('supplies'),name:name,category:ctl(f,'category').value,unit:ctl(f,'unit').value,lowStock:num(ctl(f,'lowStock').value),notes:ctl(f,'notes').value.trim(),purchases:[purchase],usage:[]};return save('supplies',p.id,p).then(function(ok){if(ok)toast('Supply purchase recorded');return ok;});}\n var chosen=state.supplies.find(function(x){return x.id===ctl(f,'item').value;});var q=num(ctl(f,'quantity').value);if(!chosen||!(q>0))return fail(f,'Choose an item and enter a quantity above zero.');var totals=supplyTotals(chosen);if(q>totals.left)return fail(f,'Usage exceeds available stock ('+totals.left+' '+(chosen.unit||'pcs')+' available).');chosen=Object.assign({},chosen,{usage:(chosen.usage||[]).concat([{date:ctl(f,'date').value||today(),quantity:q,purpose:ctl(f,'purpose').value.trim(),notes:ctl(f,'notes').value.trim()}])});return save('supplies',chosen.id,chosen).then(function(ok){if(ok)toast('Supply usage recorded');return ok;});});\n}\nfunction openWastage(){
  var opts=Array.from(getStats().values()).sort(byName);if(!opts.length){toast('Log a filament purchase before recording wastage.',true);return;}
  var html='<div class="dbody"><div class="field"><label>Date</label><input name="date" type="date" value="'+today()+'"></div><div class="field"><label>Filament</label><select name="filament">'+opts.map(function(e){return '<option value="'+esc(e.key)+'">'+esc(e.name)+' — '+fmtG(e.left)+' left</option>';}).join('')+'</select></div><div class="field"><label>Wasted grams</label><input name="grams" type="number" min="0.01" step="any" required></div><div class="field"><label>Reason</label><select name="reason"><option>Print failure</option><option>Purge / colour change</option><option>Test print</option><option>Damaged filament</option><option>Other</option></select></div><div class="field"><label>Notes (optional)</label><textarea name="notes"></textarea></div></div>'+foot('',false,'Save wastage');
  var f=openDrawer('Log filament wastage',html);wireSubmit(f,function(){var key=ctl(f,'filament').value,g=num(ctl(f,'grams').value);if(!(g>0))return fail(f,'Enter grams greater than zero.');if(!key)return fail(f,'Choose a valid filament. Refresh the CRM and try again.');/* Recalculate from the latest in-memory records at submit time; never trust the stock amount shown when the drawer opened. */statsCache=null;statsVer=-1;var e=getStats().get(key);if(!e)return fail(f,'Choose a valid filament. Refresh the CRM and try again.');if(wastageExceedsStock(g,e.left))return fail(f,'Wastage exceeds available stock ('+fmtG(Math.max(0,e.left))+' g available). Refresh the CRM and reduce the grams.');var d={date:ctl(f,'date').value||today(),filamentKey:key,filamentName:e?e.name:key,grams:g,reason:ctl(f,'reason').value,notes:ctl(f,'notes').value.trim(),createdAt:new Date().toISOString()};return save('wastage',backend.newId('wastage'),d).then(function(ok){if(ok)toast('Wastage recorded');return ok;});});
@@ -1390,7 +1390,7 @@ function openSettings(){
         file.text().then(function(raw){
           var data;
           try{data=JSON.parse(raw);}catch(err){toast('Invalid JSON file. No data was changed.',true);return;}
-          var groups=['filaments','printers','products','customers','sales','wastage','transfers'];
+          var groups=['filaments','printers','products','customers','sales','wastage','transfers','supplies'];
           var errors=[],warnings=[],counts={};
           if(!data||typeof data!=='object'||Array.isArray(data)){toast('Backup must contain a JSON object. No data was changed.',true);return;}
           if(data.schemaVersion!==2)warnings.push('Schema version is '+esc(data.schemaVersion==null?'missing':data.schemaVersion)+'; this CRM currently exports version 2.');
@@ -1464,7 +1464,7 @@ document.addEventListener('click',function(e){
     else if(a==='new-sale')openSale();
     else if(a==='new-customer')openCustomer();
     else if(a==='new-wastage')openWastage();
-    else if(a==='new-transfer')openTransfer();
+    else if(a==='new-transfer')openTransfer();\n    else if(a==='buy-supply')openSupply('buy');\n    else if(a==='use-supply')openSupply('use');\n    else if(a.indexOf('use-supply:')===0)openSupply('use',a.slice(11));\n    else if(a.indexOf('delete-supply:')===0){var sid=a.slice(14),sup=state.supplies.find(function(x){return x.id===sid;});if(sup&&confirm('Delete '+sup.name+' and its purchase/usage history?'))remove('supplies',sid).then(function(ok){if(ok)toast('Supply item deleted');});}
     else if(a.indexOf('delete-wastage:')===0){var wid=a.slice(15);if(confirm('Delete this wastage record?'))remove('wastage',wid).then(function(ok){if(ok)toast('Wastage record deleted');});}
     else if(a.indexOf('delete-transfer:')===0){var tid=a.slice(17);if(confirm('Delete this branch transfer?'))remove('transfers',tid).then(function(ok){if(ok)toast('Transfer deleted');});}
     else if(a==='settings')openSettings();
