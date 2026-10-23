@@ -129,7 +129,7 @@ test('Google Sheets payload includes all report groups supported by the CRM', ()
   const end = source.indexOf('function testGoogleSheets()', start);
   assert.notEqual(end, -1, 'sheetsPayload must end before testGoogleSheets');
   const payload = source.slice(start, end);
-  for (const key of ['filament','products','sales','customers','wastage','branchTransfers']) {
+  for (const key of ['filament','products','sales','customers','wastage','branchTransfers','consumables']) {
     assert.ok(payload.includes(key + ':'), 'Sheets payload must include ' + key);
   }
 });
@@ -191,4 +191,17 @@ test('wastage stock guard rejects amounts above stock and any positive wastage w
   assert.equal(context.wastageExceedsStock(896, 896), false, 'exactly available stock may be recorded');
   assert.equal(context.wastageExceedsStock(1, 0), true, 'positive wastage must be rejected at zero stock');
   assert.equal(context.wastageExceedsStock(1, -104), true, 'positive wastage must be rejected at negative stock');
+});
+
+
+test('consumables report includes stock totals and purchase/usage history in Sheets export', () => {
+  assert.match(source, /function reportSupplies\(\)/);
+  const start = source.indexOf('function reportSupplies(){');
+  const end = source.indexOf('\nfunction vReports()', start);
+  assert.ok(start >= 0 && end > start, 'reportSupplies must be defined before reports render');
+  const report = source.slice(start, end);
+  for (const column of ['Purchased quantity','Used quantity','Remaining stock','Purchase spend','Purchase history','Usage history']) {
+    assert.ok(report.includes("'" + column + "'"), 'Consumables report must include ' + column);
+  }
+  assert.match(source, /reportTable\('Consumables & supplies report',sup\)/);
 });
