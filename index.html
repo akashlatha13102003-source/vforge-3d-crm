@@ -486,13 +486,27 @@ function syncStateAfterSave(col){
 }
 function save(col,id,data){
   return Promise.resolve().then(function(){return backend.save(col,id,data);}).then(function(){
-    if(COLS.indexOf(col)>=0&&col!=='settings')return syncStateAfterSave(col);
+    if(COLS.indexOf(col)>=0&&col!=='settings'){
+      return syncStateAfterSave(col).then(function(){
+        if(['filaments','products','sales','customers','wastage','transfers'].indexOf(col)>=0){
+          queueAutoSheetsSync('saved:'+col);
+        }
+        return true;
+      });
+    }
     return true;
   },function(e){toast(errMsg(e),true);return false;});
 }
 function remove(col,id){
   return Promise.resolve().then(function(){return backend.remove(col,id);}).then(function(){
-    if(COLS.indexOf(col)>=0&&col!=='settings')return syncStateAfterSave(col);
+    if(COLS.indexOf(col)>=0&&col!=='settings'){
+      return syncStateAfterSave(col).then(function(){
+        if(['filaments','products','sales','customers','wastage','transfers'].indexOf(col)>=0){
+          queueAutoSheetsSync('removed:'+col);
+        }
+        return true;
+      });
+    }
     return true;
   },function(e){toast(errMsg(e),true);return false;});
 }
@@ -1480,9 +1494,8 @@ function onDocs(col,docs){
   if(!state.ready&&COLS.every(function(c){return state.loaded[c];}))state.ready=true;
   if(state.ready){
     renderContent();setStamp();
-    // Sync only after the live/backend update has reached local state.
-    // This prevents Google Sheets from receiving the previous inventory snapshot.
-    if(['filaments','products','sales','customers','wastage','transfers'].indexOf(col)>=0)queueAutoSheetsSync('backend-update:'+col);
+    // Do not trigger Sheets sync on every load/refresh. Sync is queued only
+    // after a successful user save/delete, preventing repeated writes.
   }
 }
 function boot(){
