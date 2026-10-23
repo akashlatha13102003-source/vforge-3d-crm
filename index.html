@@ -1506,7 +1506,7 @@ document.addEventListener('click',function(e){
     else if(a.indexOf('use-supply:')===0)openSupply('use',a.slice(11));
     else if(a.indexOf('delete-supply:')===0){var sid=a.slice(14),sup=state.supplies.find(function(x){return x.id===sid;});if(sup&&confirm('Delete '+sup.name+' and its purchase/usage history?'))remove('supplies',sid).then(function(ok){if(ok)toast('Supply item deleted');});}
     else if(a.indexOf('delete-wastage:')===0){var wid=a.slice(15);if(confirm('Delete this wastage record?'))remove('wastage',wid).then(function(ok){if(ok)toast('Wastage record deleted');});}
-    else if(a.indexOf('delete-transfer:')===0){var tid=a.slice(17);if(confirm('Delete this branch transfer?'))remove('transfers',tid).then(function(ok){if(ok)toast('Transfer deleted');});}
+    else if(a.indexOf('delete-transfer:')===0){var tid=a.slice(16);if(confirm('Delete this branch transfer?'))remove('transfers',tid).then(function(ok){if(ok)toast('Transfer deleted');});}
     else if(a==='settings')openSettings();
     else if(a==='sync-sheets')syncGoogleSheets();
     else if(a==='test-sheets')testGoogleSheets();
