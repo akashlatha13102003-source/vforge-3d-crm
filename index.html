@@ -1240,10 +1240,29 @@ function reportWastage(){
 function reportTransfers(){
   return state.transfers.map(function(t){return {'Date':t.date||'','Branch':t.branch||'','Product':t.productName||'','Quantity':Math.max(1,num(t.quantity||1)),'Transfer price':t.price==null?'N/A':num(t.price),'Notes':t.notes||''};});
 }
+function reportConsumables(){
+  return state.supplies.slice().sort(byName).map(function(item){
+    var totals=supplyTotals(item);
+    return {
+      'Item':item.name||'',
+      'Category':item.category||'Other',
+      'Purchased quantity':Math.round(totals.bought*1000)/1000,
+      'Used quantity':Math.round(totals.used*1000)/1000,
+      'In stock':Math.round(totals.left*1000)/1000,
+      'Purchase spend':Math.round(totals.spend*100)/100,
+      'Unit':item.unit||'pcs',
+      'Low-stock alert':num(item.lowStock),
+      'Suppliers':Array.from(new Set((item.purchases||[]).map(function(p){return p.supplier||'';}).filter(Boolean))).join(', '),
+      'Purchase history':(item.purchases||[]).map(function(p){return (p.date||'')+': '+num(p.quantity)+' '+(item.unit||'pcs')+' for '+money(p.total)+(p.supplier?' from '+p.supplier:'');}).join(' | '),
+      'Usage history':(item.usage||[]).map(function(u){return (u.date||'')+': '+num(u.quantity)+' '+(item.unit||'pcs')+(u.purpose?' — '+u.purpose:'');}).join(' | '),
+      'Notes':item.notes||''
+    };
+  });
+}
 function vReports(){
-  var f=reportFilaments(),p=reportProducts(),s=reportSales(),c=reportCustomers(),w=reportWastage(),t=reportTransfers();
+  var f=reportFilaments(),p=reportProducts(),s=reportSales(),c=reportCustomers(),w=reportWastage(),t=reportTransfers(),sup=reportConsumables();
   return '<section class="sec"><div class="info-box"><strong>Google Sheets</strong> — Auto-sync is enabled when a Web App URL is configured in Settings. Changes are sent to report sheets; the browser reports when a request is queued, not confirmed, unless receipt is verified in the Sync Log. Quantity made is deducted from filament stock; recipe grams are shown separately.</div></section>'+
-    reportTable('Filament report',f)+reportTable('Product report',p)+reportTable('Sales report',s)+reportTable('Customer report',c)+reportTable('Wastage report',w)+reportTable('Branch transfers',t);
+    reportTable('Filament report',f)+reportTable('Product report',p)+reportTable('Sales report',s)+reportTable('Customer report',c)+reportTable('Wastage report',w)+reportTable('Branch transfers',t)+reportTable('Consumables & supplies report',sup);
 }
 function sheetsPayload(){
   return JSON.stringify({
@@ -1254,7 +1273,8 @@ function sheetsPayload(){
     sales:reportSales(),
     customers:reportCustomers(),
     wastage:reportWastage(),
-    branchTransfers:reportTransfers()
+    branchTransfers:reportTransfers(),
+    consumables:reportConsumables()
   });
 }
 function testGoogleSheets(){
