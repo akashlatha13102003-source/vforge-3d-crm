@@ -903,7 +903,11 @@ function openPurchase(id){
   if(id&&!p)return;
   var v=p||{brand:'',material:'',colour:'',hex:'#2b2f33',filamentType:'Single Colour',colours:[],weight:1000,spools:1,total:'',date:today(),supplier:''};
   var savedColours=Array.isArray(v.colours)?v.colours:[];
-  var extraColourText=savedColours.filter(function(c){return c&&((c.name||'')!==String(v.colour||''));}).map(function(c){return String(c.name||'')+', '+safeHex(c.hex);}).join('\\n');
+  var extraColours=savedColours.filter(function(x){return x&&String(x.name||'').toLowerCase()!==String(v.colour||'').toLowerCase();}).map(function(x){return {name:String(x.name||''),hex:safeHex(x.hex)};});
+  function extraColourRow(x,i){
+    x=x||{name:'',hex:'#ff8a00'};
+    return '<div class="grid2 keep extra-colour-row" data-extra-colour="'+i+'"><div class="field"><label for="f-extra-name-'+i+'">Additional colour '+(i+1)+' name</label><input id="f-extra-name-'+i+'" data-extra-name autocomplete="off" placeholder="Orange" value="'+esc(x.name)+'"></div><div class="field"><label for="f-extra-hex-'+i+'">Additional colour '+(i+1)+' swatch</label><div class="swatch-control"><input id="f-extra-hex-'+i+'" data-extra-hex type="color" value="'+safeHex(x.hex)+'"><button type="button" class="btn" data-remove-extra="'+i+'">Remove</button></div></div></div>';
+  }
   var brands=uniq(state.filaments.map(function(f){return f.brand;}).concat(['Generic','eSUN','Polymaker','Sunlu','Creality','Elegoo','Bambu Lab','Overture','Numakers','Anycubic']));
   var mats=uniq(state.filaments.map(function(f){return f.material;}).concat(['PLA','PLA+','PETG','ABS','ASA','TPU','Nylon','PC','Silk PLA']));
   var html='<div class="dbody"><div class="part">'
@@ -912,7 +916,7 @@ function openPurchase(id){
     +'<div class="field"><label for="f-type">Filament colour type</label><select id="f-type" name="filamentType"><option'+((v.filamentType||'Single Colour')==='Single Colour'?' selected':'')+'>Single Colour</option><option'+(v.filamentType==='Dual Colour'?' selected':'')+'>Dual Colour</option><option'+(v.filamentType==='Tri Colour'?' selected':'')+'>Tri Colour</option><option'+(v.filamentType==='Multi Colour'?' selected':'')+'>Multi Colour</option></select></div>'
     +'<div class="grid2 keep"><div class="field"><label for="f-colour">Primary colour name</label><input id="f-colour" name="colour" autocomplete="off" placeholder="Matte black" value="'+esc(v.colour)+'"></div>'
     +'<div class="field"><label for="f-hex">Primary colour swatch</label><input id="f-hex" name="hex" type="color" value="'+safeHex(v.hex)+'"></div></div>'
-    +'<div class="field"><label for="f-extra-colours">Additional colours <span class="opt">optional</span></label><textarea id="f-extra-colours" name="extraColours" rows="3" placeholder="Red, #ff0000&#10;Blue, #0000ff">'+esc(extraColourText)+'</textarea><p class="small muted">One colour per line in the format: colour name, #hex code. Existing records without this field remain valid.</p></div>'
+    +'<div class="field"><label>Additional colours <span class="opt">optional</span></label><div id="extra-colours-list" class="stack">'+extraColours.map(extraColourRow).join('')+'</div><button type="button" class="btn" id="add-extra-colour">+ Add another colour</button><p class="small muted">Enter each colour name and choose its swatch separately. Each name is saved with its hex code.</p></div>'
     +(p?'<p class="small muted" style="margin:-6px 0 0">Changing the brand, material or primary colour makes this a different filament in your stock.</p>':'')
     +'<div class="grid2"><div class="field"><label for="f-weight">Spool weight (g)</label><input id="f-weight" name="weight" type="number" inputmode="decimal" min="1" step="any" value="'+esc(v.weight)+'"></div>'
     +'<div class="field"><label for="f-spools">Number of spools</label><input id="f-spools" name="spools" type="number" inputmode="numeric" min="1" step="1" value="'+esc(v.spools)+'"></div></div>'
@@ -930,6 +934,10 @@ function openPurchase(id){
   form.addEventListener('input',upd);form.addEventListener('change',upd);
   ctl(form,'hex').addEventListener('input',function(){touched=true;});
   ctl(form,'colour').addEventListener('input',function(){if(touched)return;var h=guessHex(this.value);if(h)ctl(form,'hex').value=h;});
+  var extraList=$('#extra-colours-list',form);
+  $('#add-extra-colour',form).addEventListener('click',function(){var i=extraList.querySelectorAll('[data-extra-colour]').length;extraList.insertAdjacentHTML('beforeend',extraColourRow({name:'',hex:'#ff8a00'},i));});
+  extraList.addEventListener('click',function(ev){var btn=ev.target.closest('[data-remove-extra]');if(!btn)return;btn.closest('[data-extra-colour]').remove();Array.from(extraList.querySelectorAll('[data-extra-colour]')).forEach(function(row,i){row.dataset.extraColour=i;row.querySelectorAll('label')[0].textContent='Additional colour '+(i+1)+' name';row.querySelectorAll('label')[1].textContent='Additional colour '+(i+1)+' swatch';row.querySelector('[data-extra-name]').id='f-extra-name-'+i;row.querySelectorAll('label')[0].htmlFor='f-extra-name-'+i;row.querySelector('[data-extra-hex]').id='f-extra-hex-'+i;row.querySelectorAll('label')[1].htmlFor='f-extra-hex-'+i;row.querySelector('[data-remove-extra]').dataset.removeExtra=i;});});
+  extraList.addEventListener('input',function(ev){if(ev.target.matches('[data-extra-name]')){var picker=ev.target.closest('[data-extra-colour]').querySelector('[data-extra-hex]'),h=guessHex(ev.target.value);if(h&&!picker.dataset.touched)picker.value=h;}if(ev.target.matches('[data-extra-hex]'))ev.target.dataset.touched='1';});
   upd();
   wireSubmit(form,function(){
     var d={brand:ctl(form,'brand').value.trim(),material:ctl(form,'material').value.trim(),colour:ctl(form,'colour').value.trim(),hex:safeHex(ctl(form,'hex').value),
@@ -940,10 +948,10 @@ function openPurchase(id){
     if(!d.colour)return fail(form,'Add the primary colour name.');
     if(!(d.weight>0))return fail(form,'Spool weight must be more than 0 g.');
     if(ctl(form,'total').value.trim()==='')return fail(form,'Add the total you paid.');
-    var parsedColours=[{name:d.colour,hex:d.hex}],rawColours=ctl(form,'extraColours').value.split(/\\r?\\n/),badColour=false;
-    rawColours.forEach(function(line){line=line.trim();if(!line)return;var m=line.match(/^(.+?)\\s*,\\s*(#[0-9a-fA-F]{6})$/);if(!m){badColour=true;return;}parsedColours.push({name:m[1].trim(),hex:m[2].toLowerCase()});});
-    if(badColour)return fail(form,'Check additional colours. Use one per line: colour name, #hex code.');
-    d.colours=parsedColours.filter(function(c,i,a){return c.name&&a.findIndex(function(x){return x.name.toLowerCase()===c.name.toLowerCase()&&x.hex===c.hex;})===i;});
+    var parsedColours=[{name:d.colour,hex:d.hex}],badColour=false;
+    Array.from(extraList.querySelectorAll('[data-extra-colour]')).forEach(function(row){var name=row.querySelector('[data-extra-name]').value.trim(),picker=row.querySelector('[data-extra-hex]'),hex=safeHex(picker.value);if(!name&&!picker.dataset.touched)return;if(!name){badColour=true;return;}parsedColours.push({name:name,hex:hex});});
+    if(badColour)return fail(form,'Add a name for each additional colour, or remove that colour row.');
+    d.colours=parsedColours.filter(function(x,i,all){return x.name&&all.findIndex(function(y){return y.name.toLowerCase()===x.name.toLowerCase();})===i;});
     d.key=fkey(d);d.createdAt=p?p.createdAt:new Date().toISOString();
     return save('filaments',p?p.id:backend.newId('filaments'),d).then(function(ok){if(ok)toast(p?'Purchase updated':'Purchase saved');return ok;});
   });
