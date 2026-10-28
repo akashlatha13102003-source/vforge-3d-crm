@@ -115,6 +115,16 @@ test('sale filament warning counts only pieces beyond available finished stock',
   assert.equal(context.productExtraQtyForSale('p1', 3, 's1'), 1, 'editing the saved sale still needs only one extra piece');
 });
 
+
+test('sale form explicitly warns when additional finished pieces need printing', () => {
+  const start = source.indexOf('function openSale(');
+  const end = source.indexOf('/* ---------- forms: customer ---------- */', start);
+  const form = source.slice(start, end);
+  assert.match(form, /if\(extraQty>0\)warnings\.push\('Finished stock:/);
+  assert.match(form, /additional piece/);
+  assert.match(form, /requiring '\+fmtG\(need\)/);
+});
+
 test('sales covered by existing finished stock require no additional filament', () => {
   context.state = {
     products: [{ id: 'p1', quantityMade: 5, lines: [{ key: 'pla|green', grams: 145 }] }],
