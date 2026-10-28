@@ -17,7 +17,7 @@ function extractFunction(name) {
 }
 
 const declarations = [
-  'productGst', 'saleLines', 'productSoldQty', 'productAvailableQty',
+  'productGst', 'saleLines', 'productSoldQty', 'productAvailableQty', 'productProductionStockError',
   'productExtraQtyForSale', 'productSavedExtraQtyForSale', 'saleRev', 'saleTax', 'saleTaxable',
   'saleCost', 'saleProfit', 'getStats', 'powerOf', 'productCost', 'wastageExceedsStock'
 ].map(extractFunction).join('\n');
@@ -43,6 +43,21 @@ function test(name, fn) {
   try { fn(); process.stdout.write('PASS ' + name + '\n'); }
   catch (e) { process.stderr.write('FAIL ' + name + ': ' + e.message + '\n'); process.exitCode = 1; }
 }
+
+
+test('product production rejects quantities that exceed available filament and permits exact stock', () => {
+  const stats = new Map([['green', { name: 'Anycubic PLA Green', left: 600 }]]);
+  const recipe = [{ key: 'green', name: 'Anycubic PLA Green', grams: 145 }];
+  assert.equal(context.productProductionStockError(recipe, 4, stats, [], 0, 0), '');
+  assert.match(context.productProductionStockError(recipe, 5, stats, [], 0, 0), /725 g required.*600 g available/i);
+});
+
+test('editing a product gives back its existing recipe consumption before validating new quantity', () => {
+  const stats = new Map([['green', { name: 'Anycubic PLA Green', left: 310 }]]);
+  const oldRecipe = [{ key: 'green', name: 'Anycubic PLA Green', grams: 145 }];
+  assert.equal(context.productProductionStockError(oldRecipe, 4, stats, oldRecipe, 2, 0), '');
+  assert.match(context.productProductionStockError(oldRecipe, 7, stats, oldRecipe, 2, 0), /1015 g required.*600 g available/i);
+});
 
 test('legacy sale with zero saved unit cost falls back to current product recipe cost', () => {
   context.state = {
