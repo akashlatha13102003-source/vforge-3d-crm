@@ -757,7 +757,7 @@ function spoolRow(e,low){
   var left=e.left<0?'Over by '+fmtG(-e.left):fmtG(e.left)+' left';
   return '<div class="spool"><div class="spool-head"><span class="dot" style="background:'+safeHex(e.hex)+'"></span><strong>'+esc(e.name)+'</strong>'+status+'<span class="spool-left">'+left+'</span></div>'
     +'<div class="bar-track" role="img" aria-label="'+esc(e.name)+': '+Math.round(pc)+' percent left"><i style="width:'+pc.toFixed(1)+'%;background-color:'+safeHex(e.hex)+'"></i></div>'
-    +'<div class="small muted">'+fmtG(e.bought)+' bought, '+fmtG(e.productionUsed)+' used for products made, '+fmtG(e.used)+' used in unproduced sales, '+fmtG(e.recipeUsed)+' configured per product piece, '+money(e.cpg,2)+' per gram</div>'
+    +'<div class="small muted">'+fmtG(e.bought)+' bought, '+fmtG(e.productionUsed)+' used for products made, '+fmtG(e.used)+' used in unproduced sales, '+fmtG(e.wastageUsed||0)+' wastage recorded, '+fmtG(e.recipeUsed)+' configured per product piece, '+money(e.cpg,2)+' per gram</div>'
     +'<div class="small muted spool-prods">'+(e.prods&&e.prods.length?'Products using it: '+e.prods.slice().sort(byName).slice(0,4).map(function(x){return esc(x.name)+' '+fmtG(x.grams)+' each';}).join(', ')+(e.prods.length>4?' and '+(e.prods.length-4)+' more':''):'Not used in any product yet')+'</div></div>';
 }
 function vStart(){
