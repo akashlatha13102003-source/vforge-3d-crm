@@ -19,11 +19,12 @@ function extractFunction(name) {
 const declarations = [
   'productGst', 'saleLines', 'productSoldQty', 'productAvailableQty', 'productProductionStockError',
   'productExtraQtyForSale', 'productSavedExtraQtyForSale', 'saleRev', 'saleTax', 'saleTaxable',
-  'saleCost', 'saleProfit', 'getStats', 'powerOf', 'productCost', 'wastageExceedsStock'
+  'saleCost', 'saleProfit', 'getStats', 'powerOf', 'productCost', 'productProductionStockError', 'fmtG', 'wastageExceedsStock'
 ].map(extractFunction).join('\n');
 
 const context = {
   num: v => { const n = parseFloat(v); return Number.isFinite(n) ? n : 0; },
+  loc: () => 'en-IN',
   safeHex: h => /^#[0-9a-f]{6}$/i.test(h || '') ? h : '#8a8f94',
   fkey: o => [o.brand, o.material, o.colour].map(v => String(v || '').trim().toLowerCase()).join('|'),
   fname: o => [o.brand, o.material, o.colour].filter(Boolean).join(' '),
