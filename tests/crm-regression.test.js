@@ -54,7 +54,7 @@ test('legacy sale with zero saved unit cost falls back to current product recipe
   context.statsCache = null;
   context.statsVer = -1;
   context.ver = (context.ver || 0) + 1;
-  approx(context.saleCost(context.state.sales[0]), 649.83, 'three units should cost 3 × 216.61');
+  approx(context.saleCost(context.state.sales[0]), 649.827, 'three units should cost 3 × 216.609');
 });
 
 test('GST-exclusive price adds tax without changing taxable value', () => {
