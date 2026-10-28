@@ -168,7 +168,7 @@ test('filament stock breakdown explicitly displays recorded wastage', () => {
   const start = source.indexOf('function spoolRow(');
   const end = source.indexOf('function vStart()', start);
   const row = source.slice(start, end);
-  assert.match(row, /fmtG\(e\.wastageUsed\|\|0\)\+' wastage recorded'/);
+  assert.match(row, /fmtG\(e\.wastageUsed\|\|0\)\+' wastage recorded,/);
 });
 
 test('wastage reduces filament stock once and recalculates on edit/delete', () => {
