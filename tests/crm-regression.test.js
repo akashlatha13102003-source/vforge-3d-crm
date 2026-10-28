@@ -17,7 +17,8 @@ function extractFunction(name) {
 }
 
 const declarations = [
-  'productGst', 'saleLines', 'saleRev', 'saleTax', 'saleTaxable',
+  'productGst', 'saleLines', 'productSoldQty', 'productAvailableQty',
+  'productExtraQtyForSale', 'productSavedExtraQtyForSale', 'saleRev', 'saleTax', 'saleTaxable',
   'saleCost', 'saleProfit', 'getStats', 'wastageExceedsStock'
 ].map(extractFunction).join('\n');
 
@@ -89,6 +90,39 @@ test('quantity made deducts recipe stock once, with only excess sales deducting 
   context.state.sales[0].qty = 4;
   context.ver++; context.statsCache = null;
   approx(context.getStats().get('brand|pla|red').left, 600, 'stock after 3 made and 4 sold');
+});
+
+
+test('product availability subtracts sold quantity from quantity made', () => {
+  context.state = {
+    products: [{ id: 'p1', quantityMade: 2, lines: [] }],
+    sales: [{ id: 's1', productId: 'p1', qty: 1 }],
+    filaments: [], wastage: [], settings: {}
+  };
+  assert.equal(context.productAvailableQty('p1'), 1, 'one of two made remains after one sale');
+  assert.equal(context.productAvailableQty('p1', 's1'), 2, 'editing a sale excludes that sale from current stock');
+});
+
+test('sale filament warning counts only pieces beyond available finished stock', () => {
+  context.state = {
+    products: [{ id: 'p1', quantityMade: 2, lines: [{ key: 'pla|green', grams: 145 }] }],
+    sales: [], filaments: [], wastage: [], settings: {}
+  };
+  assert.equal(context.productExtraQtyForSale('p1', 3, null), 1, 'selling three when two are made requires one additional print');
+  assert.equal(145 * context.productExtraQtyForSale('p1', 3, null), 145, 'only 145g is required for the third piece');
+  context.state.sales = [{ id: 's1', productId: 'p1', qty: 3 }];
+  assert.equal(context.productSavedExtraQtyForSale('p1', 's1'), 1, 'editing the saved sale adds back only its one excess-produced piece');
+  assert.equal(context.productExtraQtyForSale('p1', 3, 's1'), 1, 'editing the saved sale still needs only one extra piece');
+});
+
+test('sales covered by existing finished stock require no additional filament', () => {
+  context.state = {
+    products: [{ id: 'p1', quantityMade: 5, lines: [{ key: 'pla|green', grams: 145 }] }],
+    sales: [{ id: 's1', productId: 'p1', qty: 2 }],
+    filaments: [], wastage: [], settings: {}
+  };
+  assert.equal(context.productAvailableQty('p1'), 3);
+  assert.equal(context.productExtraQtyForSale('p1', 3, null), 0);
 });
 
 test('wastage reduces filament stock once and recalculates on edit/delete', () => {
