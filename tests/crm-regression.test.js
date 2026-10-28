@@ -57,7 +57,7 @@ test('editing a product gives back its existing recipe consumption before valida
   const stats = new Map([['green', { name: 'Anycubic PLA Green', left: 310 }]]);
   const oldRecipe = [{ key: 'green', name: 'Anycubic PLA Green', grams: 145 }];
   assert.equal(context.productProductionStockError(oldRecipe, 4, stats, oldRecipe, 2, 0), '');
-  assert.match(context.productProductionStockError(oldRecipe, 7, stats, oldRecipe, 2, 0), /1015 g required.*600 g available/i);
+  assert.match(context.productProductionStockError(oldRecipe, 7, stats, oldRecipe, 2, 0), /1,?015 g required.*600 g available/i);
 });
 
 test('legacy sale with zero saved unit cost falls back to current product recipe cost', () => {
