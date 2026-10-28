@@ -164,6 +164,13 @@ test('sales covered by existing finished stock require no additional filament', 
   assert.equal(context.productExtraQtyForSale('p1', 3, null), 0);
 });
 
+test('filament stock breakdown explicitly displays recorded wastage', () => {
+  const start = source.indexOf('function spoolRow(');
+  const end = source.indexOf('function vStart()', start);
+  const row = source.slice(start, end);
+  assert.match(row, /fmtG\(e\.wastageUsed\|\|0\)\+' wastage recorded'/);
+});
+
 test('wastage reduces filament stock once and recalculates on edit/delete', () => {
   context.state = {
     filaments: [{ id: 'purchase-1', key: 'brand|pla|red', brand: 'Brand', material: 'PLA', colour: 'Red', hex: '#ff0000', weight: 1000, spools: 1, total: 2000, date: '2026-01-01', createdAt: '2026-01-01T00:00:00Z' }],
