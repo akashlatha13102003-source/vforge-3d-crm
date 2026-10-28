@@ -30,7 +30,8 @@ const context = {
   ver: 1,
   statsVer: -1,
   statsCache: null,
-  state: { filaments: [], products: [], sales: [], wastage: [], settings: {} },
+  state: { filaments: [], products: [], sales: [], wastage: [], printers: [], settings: { powerRate: 10.50 } },
+  powerOf: () => ({ cost: 21.61, kwh: 2.058 }),
 };
 vm.createContext(context);
 vm.runInContext(declarations, context);
@@ -43,6 +44,19 @@ function test(name, fn) {
   try { fn(); process.stdout.write('PASS ' + name + '\n'); }
   catch (e) { process.stderr.write('FAIL ' + name + ': ' + e.message + '\n'); process.exitCode = 1; }
 }
+
+test('legacy sale with zero saved unit cost falls back to current product recipe cost', () => {
+  context.state = {
+    filaments: [{ key: 'green', brand: 'Anycubic', material: 'PLA', colour: 'Green', weight: 600, spools: 1, total: 600 }],
+    products: [{ id: 'funko', name: 'Akash Funko', lines: [{ key: 'green', grams: 145 }], printerId: 'kobra', printHours: 4.116, otherCost: 50, quantityMade: 3 }],
+    sales: [{ id: 'sale-1', lineItems: [{ productId: 'funko', productName: 'Akash Funko', qty: 3, unitPrice: 700, unitCost: 0 }] }],
+    wastage: [], printers: [], settings: { powerRate: 10.5 }
+  };
+  context.statsCache = null;
+  context.statsVer = -1;
+  context.ver = (context.ver || 0) + 1;
+  approx(context.saleCost(context.state.sales[0]), 649.83, 'three units should cost 3 × 216.61');
+});
 
 test('GST-exclusive price adds tax without changing taxable value', () => {
   const result = context.productGst({ gstRate: 18, priceMode: 'exclusive' }, 100);
