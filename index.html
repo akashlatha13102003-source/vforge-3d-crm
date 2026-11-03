@@ -1053,6 +1053,7 @@ function openProduct(id){
       +'<input type="hidden" name="printer" value=""><input type="hidden" name="hours" value="'+(hh||'')+'"><input type="hidden" name="mins" value="'+(mm||'')+'">';
   var html='<div class="dbody">'
     +'<div class="field"><label for="p-name">Product name</label><input id="p-name" name="name" autocomplete="off" value="'+esc(v.name)+'"></div>'
+    +'<div class="field"><label for="p-production-date">Production Date</label><input id="p-production-date" name="productionDate" type="date" value="'+esc(v.productionDate||'')+'"><span class="small muted">Leave blank if the production date is not known yet.</span></div>'
     +'<div class="part"><h3>Grams used</h3><p class="hint">Filament used to print one piece, supports and waste included.</p>'+gramsPart
     +'<div class="field"><label for="p-made">Quantity made</label><input id="p-made" name="made" type="number" inputmode="numeric" min="0" step="1" placeholder="0" value="'+esc(v.quantityMade==null?0:v.quantityMade)+'"><span class="small muted">This quantity is deducted from filament stock. Leave 0 if this is only a product recipe.</span></div>'
     +'<div class="field"><label for="p-other">Other cost per piece <span class="opt">optional</span></label><input id="p-other" name="other" type="number" inputmode="decimal" min="0" step="any" placeholder="Packaging, labour" value="'+esc(v.otherCost)+'"></div></div>'
@@ -1119,7 +1120,7 @@ function openProduct(id){
     /* Unknown print time, electricity and selling price are allowed; unknown costs must not be inferred as real zeroes. */
     var pr=state.printers.find(function(x){return x.id===pid;});
     var d={name:name,category:ctl(form,'category').value.trim(),description:ctl(form,'description').value.trim(),printHours:hrs,printerId:pid,printerName:pr?pr.name:(p&&p.printerId===pid?p.printerName||'':''),
-      price:ctl(form,'price').value.trim()===''?null:num(ctl(form,'price').value),gstRate:ctl(form,'gstRate').value===''?null:num(ctl(form,'gstRate').value),priceMode:ctl(form,'priceMode').value,otherCost:ctl(form,'other').value.trim()===''?null:num(ctl(form,'other').value),quantityMade:madeQty,lines:used,createdAt:p?p.createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};
+      price:ctl(form,'price').value.trim()===''?null:num(ctl(form,'price').value),gstRate:ctl(form,'gstRate').value===''?null:num(ctl(form,'gstRate').value),priceMode:ctl(form,'priceMode').value,otherCost:ctl(form,'other').value.trim()===''?null:num(ctl(form,'other').value),quantityMade:madeQty,lines:used,productionDate:ctl(form,'productionDate').value||'',createdAt:p?p.createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};
     return save('products',p?p.id:backend.newId('products'),d).then(function(ok){if(ok)toast(p?'Product updated':'Product saved');return ok;});
   });
   if(p)armDelete(form,function(){return remove('products',p.id).then(function(ok){if(ok)toast('Product deleted');return ok;});});
