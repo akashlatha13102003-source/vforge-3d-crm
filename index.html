@@ -1248,6 +1248,7 @@ function reportProducts(){
     var c=productCost(p,S), pg=productGst(p,p.price), sellNet=p.price==null?null:(p.gstRate==null?num(p.price):pg.taxable), margin=sellNet==null||!p.lines||!p.lines.length?null:sellNet-c.total;
     return {
       'Product':p.name||'',
+      'Production Date':p.productionDate||'',
       'Category':p.category||'',
       'Quantity made':Math.max(0,num(p.quantityMade)),
       'Filament per piece (g)':Math.round(c.grams*10)/10,
