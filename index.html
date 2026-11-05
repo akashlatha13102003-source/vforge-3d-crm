@@ -1047,24 +1047,30 @@ function openProduct(id){
     return '<option value="'+esc(e.key)+'"'+(e.key===selected?' selected':'')+'>'+esc(e.name)+' ('+money(e.cpg,2)+'/g)</option>';
   }
   function lineHtml(l,i){
-    var known=S.has(l.key);
+    var known=S.has(l.key),current=S.get(l.key);
     var o=opts.map(function(e){return filamentOptionHtml(e,l.key);}).join('')
       +(known||!l.key?'':'<option value="'+esc(l.key)+'" selected>'+esc(l.name||l.key)+' (no longer logged)</option>');
-    return '<div class="line filament-line"><div class="field" style="flex:1;min-width:0"><input type="search" data-filament-search autocomplete="off" placeholder="Search brand, material or colour…" aria-label="Search filaments"><select aria-label="Filament">'+o+'</select></div><input type="number" inputmode="decimal" min="0" step="any" aria-label="Grams used" placeholder="Grams" value="'+(l.grams===''||l.grams==null?'':esc(l.grams))+'"><button type="button" class="iconbtn" data-rm="'+i+'" aria-label="Remove filament">'+ICONS.x+'</button></div>';
+    var selectedName=current?current.name:(l.name||'');
+    return '<div class="line filament-line" style="align-items:flex-start;flex-wrap:wrap"><div style="position:relative;flex:1;min-width:180px"><input type="hidden" aria-label="Filament" value="'+esc(l.key)+'"><input type="text" data-filament-search autocomplete="off" placeholder="Search filament (e.g. black, PETG, Numakers)…" aria-label="Search filaments" value="'+esc(selectedName)+'" style="width:100%;background:var(--input,transparent)"><div data-filament-suggestions class="stack" style="display:none;position:absolute;z-index:30;top:calc(100% + 4px);left:0;right:0;max-height:220px;overflow:auto;background:var(--panel,#172326);border:1px solid var(--line,#344447);border-radius:10px;padding:5px;box-shadow:0 10px 28px rgba(0,0,0,.35)"></div><select aria-label="Filament" style="display:none">'+o+'</select></div><input type="number" inputmode="decimal" min="0" step="any" aria-label="Grams used" placeholder="Grams" value="'+(l.grams===''||l.grams==null?'':esc(l.grams))+'"><button type="button" class="iconbtn" data-rm="'+i+'" aria-label="Remove filament">'+ICONS.x+'</button></div>';
   }
   function filterFilamentLine(row){
-    var search=row.querySelector('[data-filament-search]'),sel=row.querySelector('select');
-    if(!search||!sel)return;
-    var query=search.value.trim().toLowerCase(),selected=sel.value;
-    var matches=query?opts.filter(function(e){return e.name.toLowerCase().indexOf(query)>=0;}):opts;
-    var html=matches.map(function(e){return filamentOptionHtml(e,selected);}).join('');
-    if(selected&&!matches.some(function(e){return e.key===selected;})){
-      var current=opts.find(function(e){return e.key===selected;});
-      if(current)html=filamentOptionHtml(current,selected)+html;
-      else html='<option value="'+esc(selected)+'" selected>'+esc(sel.options[sel.selectedIndex]?sel.options[sel.selectedIndex].text:'Previously selected filament')+'</option>'+html;
+    var search=row.querySelector('[data-filament-search]'),sel=row.querySelector('select'),box=row.querySelector('[data-filament-suggestions]');
+    if(!search||!sel||!box)return;
+    var query=search.value.trim().toLowerCase();
+    if(!query){box.innerHTML='';box.style.display='none';return;}
+    var matches=opts.filter(function(e){return e.name.toLowerCase().indexOf(query)>=0;});
+    matches.sort(function(a,b){
+      var ap=a.name.toLowerCase().indexOf(query),bp=b.name.toLowerCase().indexOf(query);
+      return ap-bp||a.name.localeCompare(b.name);
+    });
+    if(!matches.length){
+      box.innerHTML='<div class="small muted" style="padding:9px 10px">No matching filament found</div>';
+    }else{
+      box.innerHTML=matches.slice(0,12).map(function(e){
+        return '<button type="button" class="btn" data-filament-pick="'+esc(e.key)+'" style="display:block;width:100%;text-align:left;white-space:normal;margin:2px 0">'+esc(e.name)+' <span class="small muted">('+money(e.cpg,2)+'/g)</span></button>';
+      }).join('');
     }
-    sel.innerHTML=html;
-    if(selected)sel.value=selected;
+    box.style.display='block';
   }
   var gramsPart=opts.length||lines.length
     ?'<div id="lines" class="stack">'+lines.map(lineHtml).join('')+'</div><div><button type="button" class="btn" data-add>Add another filament</button></div>'
@@ -1118,8 +1124,23 @@ function openProduct(id){
       +'<span><span class="muted">Cost per piece</span> <strong>'+money(c.total,2)+'</strong></span>'
       +(price>0?'<span><span class="muted">Margin</span> <strong class="'+(m<0?'neg':'')+'">'+signed(m,2)+' ('+pct(m/price*100)+')</strong></span>':'');
   }
-  form.addEventListener('input',upd);form.addEventListener('change',upd);
+  form.addEventListener('input',function(e){
+    if(e.target.matches('[data-filament-search]'))filterFilamentLine(e.target.closest('.line'));
+    upd();
+  });
+  form.addEventListener('change',upd);
   form.addEventListener('click',function(e){
+    var pick=e.target.closest('[data-filament-pick]');
+    if(pick){
+      var row=pick.closest('.line'),key=pick.getAttribute('data-filament-pick'),entry=S.get(key);
+      if(row&&entry){
+        row.querySelector('select').value=key;
+        row.querySelector('[data-filament-search]').value=entry.name;
+        var box=row.querySelector('[data-filament-suggestions]');box.innerHTML='';box.style.display='none';
+        upd();
+      }
+      return;
+    }
     var rm=e.target.closest('[data-rm]');
     if(rm){sync();lines.splice(+rm.dataset.rm,1);draw();upd();return;}
     if(e.target.closest('[data-add]')){
