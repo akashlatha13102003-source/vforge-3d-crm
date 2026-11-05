@@ -995,7 +995,17 @@ function openPurchase(id){
     var w=num(ctl(form,'weight').value)*num(ctl(form,'spools').value),t=num(ctl(form,'total').value);
     $('#live',form).innerHTML=w>0?'<span><span class="muted">Grams bought</span> <strong>'+fmtG(w)+'</strong></span><span><span class="muted">Cost per gram</span> <strong>'+money(t/w,2)+'</strong></span>':'<span class="muted">Enter the spool weight and price to see the cost per gram.</span>';
   }
-  form.addEventListener('input',upd);form.addEventListener('change',upd);
+  form.addEventListener('input',function(e){
+    if(e.target.matches('[data-filament-search]'))filterFilamentLine(e.target.closest('.line'));
+    upd();
+  });
+  form.addEventListener('change',function(e){
+    if(e.target.matches('.line select')){
+      var row=e.target.closest('.line'),search=row&&row.querySelector('[data-filament-search]');
+      if(search){search.value='';filterFilamentLine(row);}
+    }
+    upd();
+  });
   ctl(form,'hex').addEventListener('input',function(){touched=true;});
   ctl(form,'colour').addEventListener('input',function(){if(touched)return;var h=guessHex(this.value);if(h)ctl(form,'hex').value=h;});
   var extraList=$('#extra-colours-list',form);
@@ -1033,11 +1043,28 @@ function openProduct(id){
   var ph=num(v.printHours),hh=Math.floor(ph+1e-9),mm=Math.round((ph-hh)*60);if(mm>=60){hh+=1;mm=0;}
   var printers=state.printers.slice().sort(byName);
   var cats=uniq(state.products.map(function(x){return x.category;}));
+  function filamentOptionHtml(e,selected){
+    return '<option value="'+esc(e.key)+'"'+(e.key===selected?' selected':'')+'>'+esc(e.name)+' ('+money(e.cpg,2)+'/g)</option>';
+  }
   function lineHtml(l,i){
     var known=S.has(l.key);
-    var o=opts.map(function(e){return '<option value="'+esc(e.key)+'"'+(e.key===l.key?' selected':'')+'>'+esc(e.name)+' ('+money(e.cpg,2)+'/g)</option>';}).join('')
+    var o=opts.map(function(e){return filamentOptionHtml(e,l.key);}).join('')
       +(known||!l.key?'':'<option value="'+esc(l.key)+'" selected>'+esc(l.name||l.key)+' (no longer logged)</option>');
-    return '<div class="line"><select aria-label="Filament">'+o+'</select><input type="number" inputmode="decimal" min="0" step="any" aria-label="Grams used" placeholder="Grams" value="'+(l.grams===''||l.grams==null?'':esc(l.grams))+'"><button type="button" class="iconbtn" data-rm="'+i+'" aria-label="Remove filament">'+ICONS.x+'</button></div>';
+    return '<div class="line filament-line"><div class="field" style="flex:1;min-width:0"><input type="search" data-filament-search autocomplete="off" placeholder="Search brand, material or colour…" aria-label="Search filaments"><select aria-label="Filament">'+o+'</select></div><input type="number" inputmode="decimal" min="0" step="any" aria-label="Grams used" placeholder="Grams" value="'+(l.grams===''||l.grams==null?'':esc(l.grams))+'"><button type="button" class="iconbtn" data-rm="'+i+'" aria-label="Remove filament">'+ICONS.x+'</button></div>';
+  }
+  function filterFilamentLine(row){
+    var search=row.querySelector('[data-filament-search]'),sel=row.querySelector('select');
+    if(!search||!sel)return;
+    var query=search.value.trim().toLowerCase(),selected=sel.value;
+    var matches=query?opts.filter(function(e){return e.name.toLowerCase().indexOf(query)>=0;}):opts;
+    var html=matches.map(function(e){return filamentOptionHtml(e,selected);}).join('');
+    if(selected&&!matches.some(function(e){return e.key===selected;})){
+      var current=opts.find(function(e){return e.key===selected;});
+      if(current)html=filamentOptionHtml(current,selected)+html;
+      else html='<option value="'+esc(selected)+'" selected>'+esc(sel.options[sel.selectedIndex]?sel.options[sel.selectedIndex].text:'Previously selected filament')+'</option>'+html;
+    }
+    sel.innerHTML=html;
+    if(selected)sel.value=selected;
   }
   var gramsPart=opts.length||lines.length
     ?'<div id="lines" class="stack">'+lines.map(lineHtml).join('')+'</div><div><button type="button" class="btn" data-add>Add another filament</button></div>'
