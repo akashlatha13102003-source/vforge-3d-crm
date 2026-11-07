@@ -31,7 +31,7 @@ const context = {
   ver: 1,
   statsVer: -1,
   statsCache: null,
-  state: { filaments: [], products: [], sales: [], wastage: [], marketing: [], printers: [], settings: { powerRate: 10.50 } },
+  state: { filaments: [], products: [], sales: [], wastage: [], marketing: [], printers: [], supplies: [], settings: { powerRate: 10.50 } },
 };
 vm.createContext(context);
 vm.runInContext(declarations, context);
@@ -45,6 +45,22 @@ function test(name, fn) {
   catch (e) { process.stderr.write('FAIL ' + name + ': ' + e.message + '\n'); process.exitCode = 1; }
 }
 
+
+test('product consumables are included in unit cost using weighted-average purchase cost', () => {
+  context.state = {
+    filaments: [], products: [], sales: [], wastage: [], marketing: [], printers: [],
+    supplies: [{ id: 'lamp-set', name: 'Lamp Set', unit: 'pcs', purchases: [
+      { quantity: 10, total: 2000 }, { quantity: 5, total: 1000 }
+    ], usage: [] }],
+    settings: { powerRate: 10.5 }
+  };
+  const cost = context.productCost({ lines: [], consumables: [{ supplyId: 'lamp-set', quantity: 1 }], printerId: '', printHours: 0, otherCost: 50 }, new Map());
+  approx(context.supplyTotals(context.state.supplies[0]).unitCost, 200, 'weighted average unit cost');
+  approx(cost.consumables, 200, 'one consumable per product');
+  approx(cost.total, 250, 'consumable plus other cost');
+  const two = context.productCost({ lines: [], consumables: [{ supplyId: 'lamp-set', quantity: 2 }], printerId: '', printHours: 0, otherCost: 50 }, new Map());
+  approx(two.total, 450, 'two consumables plus other cost');
+});
 
 test('product production rejects quantities that exceed available filament and permits exact stock', () => {
   const stats = new Map([['green', { name: 'Anycubic PLA Green', left: 600 }]]);
