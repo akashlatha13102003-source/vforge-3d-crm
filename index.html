@@ -864,7 +864,7 @@ function vMarketing(){
   }).join('');
   return cards+'<div style="overflow-x:auto"><table><thead><tr><th>Date</th><th>Product</th><th>Purpose</th><th class="num">Qty</th><th class="num">Cost</th><th>Recipient / project</th><th></th></tr></thead><tbody>'+body+'</tbody></table></div>';
 }
-\nfunction vSales(){
+function vSales(){
   if(!state.sales.length)return empty('No sales yet','Record what you sold, the price you sold it at and who bought it. Filament stock and profit update automatically.',state.products.length?'new-sale':(state.filaments.length?'new-product':'new-purchase'),state.products.length?'Record a sale':(state.filaments.length?'Add a product first':'Log filament first'));
   var q=state.q.trim().toLowerCase();
   var list=sortedSales(state.sales).filter(function(s){return !q||(custName(s)+' '+prodName(s)+' '+(s.notes||'')).toLowerCase().indexOf(q)>=0;});
@@ -1146,7 +1146,7 @@ function marketingLineHtml(filaments,index){
   var options='<option value="">Select filament</option>'+filaments.map(function(e){return '<option value="'+esc(e.key)+'">'+esc(e.name)+' ('+money(e.cpg,2)+'/g)</option>';}).join('');
   return '<div class="line marketing-line"><div class="field" style="flex:1;min-width:180px"><select name="filament-'+index+'" aria-label="Filament">'+options+'</select></div><input name="grams" type="number" min="0" step="any" placeholder="Grams per piece" aria-label="Grams per piece"><button type="button" class="iconbtn" data-marketing-remove-line aria-label="Remove filament">'+ICONS.x+'</button></div>';
 }
-\nfunction openProduct(id){
+function openProduct(id){
   var S=getStats(),p=id?state.products.find(function(x){return x.id===id;}):null;
   if(id&&!p)return;
   var opts=Array.from(S.values()).sort(byName);
