@@ -589,14 +589,15 @@ function getStats(){
 
   // Sales can contain multiple products. Preserve legacy single-product records and
   // apply the same production-vs-sale inventory rule to each line item.
-  var soldByProduct=new Map();
+  var soldByProduct=new Map(),marketedByProduct=new Map();
   state.sales.forEach(function(s){saleLines(s).forEach(function(l){var pid=l.productId||s.productId;if(!pid)return;soldByProduct.set(pid,(soldByProduct.get(pid)||0)+Math.max(0,num(l.qty)));});});
+  state.marketing.forEach(function(m){if(m.productId)marketedByProduct.set(m.productId,(marketedByProduct.get(m.productId)||0)+Math.max(0,num(m.quantity)));});
   state.sales.forEach(function(s){saleLines(s).forEach(function(l){
     var pid=l.productId||s.productId,prod=state.products.find(function(pr){return pr.id===pid;});
     if(!prod){(l.usage||s.usage||[]).forEach(function(u){var e=map.get(u.key);if(e)e.used+=num(u.grams)*num(l.qty||s.qty);});return;}
     if(Math.max(0,num(prod.quantityMade))<=0){(l.usage||[]).forEach(function(u){var e=map.get(u.key);if(e)e.used+=num(u.grams)*num(l.qty);});}
   });});
-  state.products.forEach(function(pr){var madeQty=Math.max(0,num(pr.quantityMade)),soldQty=soldByProduct.get(pr.id)||0,extraQty=Math.max(0,soldQty-madeQty);if(extraQty>0)(pr.lines||[]).forEach(function(l){var e=map.get(l.key);if(e)e.saleExtraUsed+=num(l.grams)*extraQty;});});
+  state.products.forEach(function(pr){var madeQty=Math.max(0,num(pr.quantityMade)),soldQty=soldByProduct.get(pr.id)||0,marketedQty=marketedByProduct.get(pr.id)||0,extraQty=Math.max(0,soldQty+marketedQty-madeQty);if(extraQty>0)(pr.lines||[]).forEach(function(l){var e=map.get(l.key);if(e)e.saleExtraUsed+=num(l.grams)*extraQty;});});
 
   state.marketing.forEach(function(m){
     if(!m.consumeFilament)return;
@@ -682,8 +683,9 @@ function productSavedExtraQtyForSale(productId,saleId){
   var prod=state.products.find(function(p){return p.id===productId;});
   if(!prod||!saleId)return 0;
   var made=Math.max(0,num(prod.quantityMade));
-  var allExtra=Math.max(0,productSoldQty(productId,null)-made);
-  var withoutCurrentExtra=Math.max(0,productSoldQty(productId,saleId)-made);
+  var marketedQty=productMarketingQty(productId,null);
+  var allExtra=Math.max(0,productSoldQty(productId,null)+marketedQty-made);
+  var withoutCurrentExtra=Math.max(0,productSoldQty(productId,saleId)+marketedQty-made);
   return Math.max(0,allExtra-withoutCurrentExtra);
 }
 function saleRev(s){return Math.round(saleLines(s).reduce(function(t,l){return t+num(l.finalUnit!=null?l.finalUnit:(num(l.unitPrice)*(l.priceMode==='inclusive'?1:1+num(l.gstRate)/100)))*num(l.qty);},0)*100)/100;}
@@ -854,7 +856,7 @@ function vMarketing(){
     .filter(function(m){return !q||[m.productName,m.purpose,m.recipient,m.project,m.notes].join(' ').toLowerCase().indexOf(q)>=0;});
   var totalQty=rows.reduce(function(t,m){return t+Math.max(0,num(m.quantity));},0);
   var totalCost=rows.reduce(function(t,m){return t+Math.max(0,num(m.totalCost));},0);
-  var cards='<div class="grid2"><div class="card"><div class="small muted">Entries</div><strong>'+rows.length+'</strong></div><div class="card"><div class="small muted">Pieces used</div><strong>'+totalQty+'</strong></div><div class="card"><div class="small muted">Recorded cost</div><strong>'+money(totalCost,2)+'</strong></div></div>';
+  var cards='<div class="figures"><div class="fig"><span class="fig-l">Entries</span><strong class="fig-v">'+rows.length+'</strong></div><div class="fig"><span class="fig-l">Pieces used</span><strong class="fig-v">'+totalQty+'</strong></div><div class="fig"><span class="fig-l">Recorded cost</span><strong class="fig-v">'+money(totalCost,2)+'</strong></div></div>';
   if(!rows.length)return cards+empty('No Marketing entries yet','Track R&D, personal-use, gifting and promotional products here. These records stay separate from Sales.','new-marketing','Add Marketing entry');
   var body=rows.map(function(m){
     return '<tr><td>'+esc(fmtDate(m.date))+'</td><td><strong>'+esc(m.productName||'Untitled product')+'</strong><div class="small muted">'+(m.productType==='existing'?'Existing product':'New product')+'</div></td><td>'+esc(marketingPurposeLabel(m.purpose))+'</td><td class="num">'+num(m.quantity)+'</td><td class="num">'+money(m.totalCost||0,2)+'</td><td>'+(m.recipient?esc(m.recipient):'—')+'</td><td><button class="btn danger" data-act="delete-marketing:'+esc(m.id)+'">Delete</button></td></tr>';
@@ -1068,7 +1070,7 @@ function openMarketing(){
     +'<section id="m-existing" class="part"><div class="field"><label for="m-product">Select existing product</label><select id="m-product" name="productId"><option value="">Choose a product</option>'+products.map(function(p){return '<option value="'+esc(p.id)+'">'+esc(p.name)+' — '+productAvailableQty(p.id,null)+' available</option>';}).join('')+'</select><span class="small muted" id="m-available"></span></div><div class="field"><label for="m-existing-qty">Quantity to use</label><input id="m-existing-qty" name="existingQty" type="number" min="1" step="1" value="1"></div></section>'
     +'<section id="m-new" class="part" style="display:none"><div class="field"><label for="m-name">New product name</label><input id="m-name" name="name" placeholder="Enter product name"></div>'
     +'<div class="field"><label for="m-production-date">Production date</label><input id="m-production-date" name="productionDate" type="date" value="'+today()+'"></div>'
-    +'<label class="checkline"><input type="checkbox" name="addToProducts" id="m-add-to-products"><span><strong>Add this product to Products list</strong><span class="small muted">Save it as a reusable product recipe. Its Marketing quantity will not be counted as available stock.</span></span></label>'
+    +'<div class="field"><label><input type="checkbox" name="addToProducts" id="m-add-to-products"> Add this product to Products list</label><span class="small muted">Save it as a reusable product recipe. Its Marketing quantity will not be counted as available stock.</span></div>'
     +'<div class="field"><label for="m-category">Category (optional)</label><input id="m-category" name="category" placeholder="Toys, Home decor…"></div>'
     +'<div class="field"><label for="m-description">Details (optional)</label><textarea id="m-description" name="description" placeholder="Product details"></textarea></div>'
     +'<div class="field"><label for="m-price">Listed price (optional)</label><input id="m-price" name="price" type="number" min="0" step="any" placeholder="0"></div>'
@@ -1271,8 +1273,9 @@ function marketingLineHtml(filaments,index){
     var statsNow=getStats();
     var soldQty=p?productSoldQty(p.id,null):0;
     var existingMade=p?Math.max(0,num(p.quantityMade)):0;
-    var existingConsumedQty=Math.max(existingMade,soldQty+productMarketingQty(p.id,null));
-    var stockError=productProductionStockError(used,madeQty,statsNow,p?(p.lines||[]):[],existingConsumedQty,soldQty);
+    var marketedQty=p?productMarketingQty(p.id,null):0;
+    var existingConsumedQty=Math.max(existingMade,soldQty+marketedQty);
+    var stockError=productProductionStockError(used,madeQty,statsNow,p?(p.lines||[]):[],existingConsumedQty,soldQty+marketedQty);
     if(stockError)return fail(form,stockError);
     /* Unknown print time, electricity and selling price are allowed; unknown costs must not be inferred as real zeroes. */
     var pr=state.printers.find(function(x){return x.id===pid;});
