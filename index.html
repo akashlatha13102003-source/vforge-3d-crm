@@ -1098,9 +1098,9 @@ function openMarketing(){
     $('#m-live',form).innerHTML='<span><span class="muted">Filament</span> <strong>'+money(cost.fil,2)+'</strong></span><span><span class="muted">Electricity</span> <strong>'+money(cost.elec,2)+'</strong></span><span><span class="muted">Total cost</span> <strong>'+money(cost.total,2)+'</strong></span>';
   }
   function addLine(){
-    var row=document.createElement('div');row.className='line marketing-line';
-    row.innerHTML=marketingLineHtml(filaments,$('.marketing-line',form).length);
-    $('#m-lines',form).appendChild(row);update();
+    var wrap=document.createElement('div');
+    wrap.innerHTML=marketingLineHtml(filaments,$('.marketing-line',form).length);
+    $('#m-lines',form).appendChild(wrap.firstElementChild);update();
   }
   form.addEventListener('input',update);form.addEventListener('change',update);
   form.addEventListener('click',function(e){
@@ -1143,7 +1143,7 @@ function openMarketing(){
 }
 function marketingLineHtml(filaments,index){
   var options='<option value="">Select filament</option>'+filaments.map(function(e){return '<option value="'+esc(e.key)+'">'+esc(e.name)+' ('+money(e.cpg,2)+'/g)</option>';}).join('');
-  return '<div class="field" style="flex:1;min-width:180px"><select name="filament-'+index+'" aria-label="Filament">'+options+'</select></div><input name="grams" type="number" min="0" step="any" placeholder="Grams per piece" aria-label="Grams per piece"><button type="button" class="iconbtn" data-marketing-remove-line aria-label="Remove filament">'+ICONS.x+'</button>';
+  return '<div class="line marketing-line"><div class="field" style="flex:1;min-width:180px"><select name="filament-'+index+'" aria-label="Filament">'+options+'</select></div><input name="grams" type="number" min="0" step="any" placeholder="Grams per piece" aria-label="Grams per piece"><button type="button" class="iconbtn" data-marketing-remove-line aria-label="Remove filament">'+ICONS.x+'</button></div>';
 }
 \nfunction openProduct(id){
   var S=getStats(),p=id?state.products.find(function(x){return x.id===id;}):null;
