@@ -621,10 +621,11 @@ function powerOf(printerId,hours){
   return {printer:pr,kwh:kwh,cost:kwh*num(state.settings.powerRate)};
 }
 function productCost(prod,S){
-  var fil=0,grams=0;
+  var fil=0,grams=0,consumables=0;
   (prod.lines||[]).forEach(function(l){var e=S.get(l.key);fil+=num(l.grams)*(e?e.cpg:0);grams+=num(l.grams);});
-  var pw=powerOf(prod.printerId,prod.printHours),other=num(prod.otherCost);
-  return {fil:fil,elec:pw.cost,kwh:pw.kwh,other:other,total:fil+pw.cost+other,grams:grams};
+  (prod.consumables||[]).forEach(function(c){var item=(state.supplies||[]).find(function(x){return x.id===c.supplyId;});if(item)consumables+=num(c.quantity)*supplyTotals(item).unitCost;});
+  var pw=powerOf(prod.printerId,prod.printHours),other=num(prod.otherCost),total=fil+pw.cost+other+consumables;
+  return {fil:fil,elec:pw.cost,kwh:pw.kwh,other:other,consumables:consumables,total:total,grams:grams,hasCost:!!((prod.lines||[]).length||(prod.consumables||[]).length||prod.printerId||num(prod.otherCost))};
 }
 function productProductionStockError(lines,quantity,stats,existingLines,existingConsumedQty,soldQty){
   var requiredQty=Math.max(Math.max(0,num(quantity)),Math.max(0,num(soldQty)));
@@ -843,9 +844,9 @@ function vProducts(){
   var list=state.products.filter(function(p){return !q||(p.name+' '+(p.category||'')+' '+(p.description||'')).toLowerCase().indexOf(q)>=0;}).sort(byName);
   if(!list.length)return '<p class="muted">No products match \u201c'+esc(state.q)+'\u201d.</p>';
   var body=list.map(function(p){
-    var c=productCost(p,S),pg=productGst(p,p.price),sellNet=p.price==null?null:(p.gstRate==null?num(p.price):pg.taxable),m=sellNet==null||!p.lines||!p.lines.length?null:sellNet-c.total;
+    var c=productCost(p,S),pg=productGst(p,p.price),sellNet=p.price==null?null:(p.gstRate==null?num(p.price):pg.taxable),m=sellNet==null||!c.hasCost?null:sellNet-c.total;
     var dots=(p.lines||[]).map(function(l){var e=S.get(l.key);return '<span class="dot" title="'+esc(l.name||'')+'" style="background:'+safeHex(e?e.hex:'#8a8f94')+'"></span>';}).join('');
-    return '<tr class="click" data-open="product:'+esc(p.id)+'"><td><button class="linkish" data-open="product:'+esc(p.id)+'">'+esc(p.name)+'</button>'+(function(){var pw=powerOf(p.printerId,p.printHours),m=[];if(p.category)m.push(p.category);if(num(p.printHours)>0)m.push(fmtHours(p.printHours)+(pw.printer?' on '+pw.printer.name:''));return m.length?'<div class="small muted">'+esc(m.join(', '))+'</div>':'';})()+'</td><td>'+esc(p.productionDate?fmtDate(p.productionDate):'')+'</td><td class="num"><strong>'+productAvailableQty(p.id,null)+'</strong><div class="small muted">of '+Math.max(0,num(p.quantityMade))+' made</div></td><td class="hide-sm"><span class="dots">'+dots+'</span></td><td class="num hide-sm">'+fmtG(c.grams)+'</td><td class="num">'+(p.lines&&p.lines.length?money(c.total,2):'N/A')+'</td><td class="num">'+(p.price==null?'N/A':money(p.price))+'</td><td class="num"><span class="'+(m!==null&&m<0?'neg':'')+'">'+(m===null?'N/A':signed(m,2))+'</span>'+(sellNet!==null&&sellNet>0&&m!==null?'<div class="small muted">'+pct(m/sellNet*100)+' margin</div>':'')+'</td></tr>';
+    return '<tr class="click" data-open="product:'+esc(p.id)+'"><td><button class="linkish" data-open="product:'+esc(p.id)+'">'+esc(p.name)+'</button>'+(function(){var pw=powerOf(p.printerId,p.printHours),m=[];if(p.category)m.push(p.category);if(num(p.printHours)>0)m.push(fmtHours(p.printHours)+(pw.printer?' on '+pw.printer.name:''));return m.length?'<div class="small muted">'+esc(m.join(', '))+'</div>':'';})()+'</td><td>'+esc(p.productionDate?fmtDate(p.productionDate):'')+'</td><td class="num"><strong>'+productAvailableQty(p.id,null)+'</strong><div class="small muted">of '+Math.max(0,num(p.quantityMade))+' made</div></td><td class="hide-sm"><span class="dots">'+dots+'</span></td><td class="num hide-sm">'+fmtG(c.grams)+'</td><td class="num">'+(c.hasCost?money(c.total,2):'N/A')+'</td><td class="num">'+(p.price==null?'N/A':money(p.price))+'</td><td class="num"><span class="'+(m!==null&&m<0?'neg':'')+'">'+(m===null?'N/A':signed(m,2))+'</span>'+(sellNet!==null&&sellNet>0&&m!==null?'<div class="small muted">'+pct(m/sellNet*100)+' margin</div>':'')+'</td></tr>';
   }).join('');
   return '<div style="overflow-x:auto"><table><thead><tr><th>Product</th><th>Production Date</th><th class="num">Available</th><th class="hide-sm">Filament</th><th class="num hide-sm">Grams</th><th class="num">Cost</th><th class="num">Listed price</th><th class="num">Margin</th></tr></thead><tbody>'+body+'</tbody></table></div>';
 }
@@ -1261,7 +1262,8 @@ function openProduct(id){
   function upd(){
     sync();
     var hrs=hoursVal(),pid=ctl(form,'printer').value;
-    var c=productCost({lines:lines.map(function(l){return {key:l.key,grams:num(l.grams)};}),otherCost:ctl(form,'other').value,printerId:pid,printHours:hrs},S);
+    syncConsumables();
+    var c=productCost({lines:lines.map(function(l){return {key:l.key,grams:num(l.grams)};}),consumables:consumableLines.filter(function(x){return x.supplyId&&num(x.quantity)>0;}).map(function(x){return {supplyId:x.supplyId,quantity:num(x.quantity)};}),otherCost:ctl(form,'other').value,printerId:pid,printHours:hrs},S);
     var price=num(ctl(form,'price').value),m=price-c.total;
     var gr=ctl(form,'gstRate').value,rate=gr===''?null:num(gr),inclusive=ctl(form,'priceMode').value==='inclusive',taxable=rate==null?null:(inclusive?price/(1+rate/100):price),gst=rate==null?null:(inclusive?price-taxable:price*rate/100),finalPrice=rate==null?null:(inclusive?price:price+gst);
     var gp=$('#gst-preview',form);if(gp)gp.innerHTML=rate==null?'<span class="muted">GST not set — no tax calculation will be assumed.</span>':'<span><span class="muted">Taxable value</span> <strong>'+money(taxable,2)+'</strong></span><span><span class="muted">GST</span> <strong>'+money(gst,2)+'</strong></span><span><span class="muted">Final price</span> <strong>'+money(finalPrice,2)+'</strong></span>';
@@ -1272,6 +1274,8 @@ function openProduct(id){
     }
     $('#live',form).innerHTML='<span><span class="muted">Filament</span> <strong>'+money(c.fil,2)+'</strong></span>'
       +'<span><span class="muted">Electricity</span> <strong>'+money(c.elec,2)+'</strong></span>'
+      +'<span><span class="muted">Consumables</span> <strong>'+money(c.consumables,2)+'</strong></span>'
+      +'<span><span class="muted">Other cost</span> <strong>'+money(c.other,2)+'</strong></span>'
       +'<span><span class="muted">Cost per piece</span> <strong>'+money(c.total,2)+'</strong></span>'
       +(price>0?'<span><span class="muted">Margin</span> <strong class="'+(m<0?'neg':'')+'">'+signed(m,2)+' ('+pct(m/price*100)+')</strong></span>':'');
   }
@@ -1452,7 +1456,7 @@ function reportFilaments(){
 function reportProducts(){
   var S=getStats();
   return state.products.slice().sort(byName).map(function(p){
-    var c=productCost(p,S), pg=productGst(p,p.price), sellNet=p.price==null?null:(p.gstRate==null?num(p.price):pg.taxable), margin=sellNet==null||!p.lines||!p.lines.length?null:sellNet-c.total;
+    var c=productCost(p,S), pg=productGst(p,p.price), sellNet=p.price==null?null:(p.gstRate==null?num(p.price):pg.taxable), margin=sellNet==null||!c.hasCost?null:sellNet-c.total;
     return {
       'Product':p.name||'',
       'Production Date':p.productionDate||'',
@@ -1462,7 +1466,8 @@ function reportProducts(){
       'Filament cost / piece':p.lines&&p.lines.length?Math.round(c.fil*100)/100:'N/A',
       'Electricity cost':p.printerId&&num(p.printHours)>0?Math.round(c.elec*100)/100:'N/A',
       'Other cost':p.otherCost==null||p.otherCost===''?'N/A':Math.round(c.other*100)/100,
-      'Total cost':p.lines&&p.lines.length?Math.round(c.total*100)/100:'N/A',
+      'Consumables cost / piece':Math.round(c.consumables*100)/100,
+      'Total cost':c.hasCost?Math.round(c.total*100)/100:'N/A',
       'Listed price':p.price==null?'N/A':Math.round(num(p.price)*100)/100,
       'GST rate %':p.gstRate==null?'Not set':num(p.gstRate),
       'GST price mode':p.priceMode||'exclusive',
