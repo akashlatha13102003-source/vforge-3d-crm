@@ -860,7 +860,7 @@ function vMarketing(){
   var cards='<div class="figures"><div class="fig"><span class="fig-l">Entries</span><strong class="fig-v">'+rows.length+'</strong></div><div class="fig"><span class="fig-l">Pieces used</span><strong class="fig-v">'+totalQty+'</strong></div><div class="fig"><span class="fig-l">Recorded cost</span><strong class="fig-v">'+money(totalCost,2)+'</strong></div></div>';
   if(!rows.length)return cards+empty('No Marketing entries yet','Track R&D, personal-use, gifting and promotional products here. These records stay separate from Sales.','new-marketing','Add Marketing entry');
   var body=rows.map(function(m){
-    return '<tr><td>'+esc(fmtDate(m.date))+'</td><td><strong>'+esc(m.productName||'Untitled product')+'</strong><div class="small muted">'+(m.productType==='existing'?'Existing product':'New product')+'</div></td><td>'+esc(marketingPurposeLabel(m.purpose))+'</td><td class="num">'+num(m.quantity)+'</td><td class="num">'+money(m.totalCost||0,2)+'</td><td>'+(m.recipient?esc(m.recipient):'—')+'</td><td><button class="btn danger" data-act="delete-marketing:'+esc(m.id)+'">Delete</button></td></tr>';
+    return '<tr><td>'+esc(fmtDate(m.date))+'</td><td><strong>'+esc(m.productName||'Untitled product')+'</strong><div class="small muted">'+(m.productType==='existing'?'Existing product':'New product')+'</div></td><td>'+esc(marketingPurposeLabel(m.purpose))+'</td><td class="num">'+num(m.quantity)+'</td><td class="num">'+money(m.totalCost||0,2)+'</td><td>'+(m.recipient?esc(m.recipient):'—')+'</td><td><button class="btn" data-act="edit-marketing:'+esc(m.id)+'">Edit</button> <button class="btn danger" data-act="delete-marketing:'+esc(m.id)+'">Delete</button></td></tr>';
   }).join('');
   return cards+'<div style="overflow-x:auto"><table><thead><tr><th>Date</th><th>Product</th><th>Purpose</th><th class="num">Qty</th><th class="num">Cost</th><th>Recipient / project</th><th></th></tr></thead><tbody>'+body+'</tbody></table></div>';
 }
@@ -1063,6 +1063,38 @@ function openPurchase(id){
 
 /* ---------- forms: product ---------- */
 
+function openMarketingEdit(id){
+  var m=state.marketing.find(function(x){return x.id===id;});
+  if(!m)return;
+  var isExisting=m.productType==='existing',made=Math.max(0,num(m.quantityMade||m.quantity)),currentQty=Math.max(0,num(m.quantity));
+  var product=m.productId?state.products.find(function(p){return p.id===m.productId;}):null;
+  var available=isExisting&&product?productAvailableQty(product.id,null)+currentQty:0;
+  var html='<div class="dbody"><div class="part">'
+    +'<div class="grid2"><div class="field"><label for="me-date">Date</label><input id="me-date" name="date" type="date" value="'+esc(m.date||today())+'"></div>'
+    +'<div class="field"><label for="me-purpose">Purpose</label><select id="me-purpose" name="purpose">'+['R&D','Personal Use','Gifting','Marketing'].map(function(p){return '<option'+(p===m.purpose?' selected':'')+'>'+p+'</option>';}).join('')+'</select></div></div>'
+    +'<div class="field"><label>Product</label><div class="live">'+esc(m.productName||'Untitled product')+' <span class="small muted">· '+(isExisting?'Existing product':'New product')+'</span></div></div>'
+    +(isExisting?'<div class="field"><label for="me-qty">Quantity used</label><input id="me-qty" name="quantity" type="number" min="1" max="'+available+'" step="1" value="'+currentQty+'"><span class="small muted">Available to this entry, including its current allocation: '+available+' piece(s).</span></div>':'<div class="field"><label for="me-qty">Quantity used</label><input id="me-qty" name="quantity" type="number" min="0" max="'+made+'" step="1" value="'+currentQty+'"><span class="small muted">Quantity made: '+made+'. Remaining balance will be recalculated.</span></div>')
+    +'<div class="field"><label for="me-recipient">Recipient (optional)</label><input id="me-recipient" name="recipient" value="'+esc(m.recipient||'')+'" placeholder="Person / client / team"></div>'
+    +'<div class="field"><label for="me-project">Project / campaign (optional)</label><input id="me-project" name="project" value="'+esc(m.project||'')+'" placeholder="Project or campaign name"></div>'
+    +'<div class="field"><label for="me-notes">Notes (optional)</label><textarea id="me-notes" name="notes" placeholder="Reason or additional details">'+esc(m.notes||'')+'</textarea></div>'
+    +'<p class="small muted">Production quantity, filament recipe and recorded production costs are kept unchanged. Editing the quantity used recalculates finished-product availability without deducting filament a second time.</p>'
+    +'</div></div>'+foot('',false,'Save changes');
+  var form=openDrawer('Edit Marketing entry',html);
+  wireSubmit(form,function(){
+    var qty=Math.floor(num(ctl(form,'quantity').value));
+    if(!isFinite(qty)||qty<0||(isExisting?(qty<1||qty>available):(qty>made)))return fail(form,isExisting?'Enter a quantity within the available stock.':'Quantity used must be between 0 and quantity made.');
+    var updated=Object.assign({},m,{
+      date:ctl(form,'date').value||m.date||today(),
+      purpose:ctl(form,'purpose').value,
+      quantity:qty,
+      recipient:ctl(form,'recipient').value.trim(),
+      project:ctl(form,'project').value.trim(),
+      notes:ctl(form,'notes').value.trim(),
+      updatedAt:new Date().toISOString()
+    });
+    return save('marketing',m.id,updated).then(function(ok){if(ok)toast('Marketing entry updated');return ok;});
+  });
+}
 function openMarketing(){
   var S=getStats(),products=state.products.slice().sort(byName),filaments=Array.from(S.values()).sort(byName),printers=state.printers.slice().sort(byName);
   var html='<div class="dbody">'
@@ -1726,6 +1758,7 @@ document.addEventListener('click',function(e){
     else if(a.indexOf('delete-supply:')===0){var sid=a.slice(14),sup=state.supplies.find(function(x){return x.id===sid;});if(sup&&confirm('Delete '+sup.name+' and its purchase/usage history?'))remove('supplies',sid).then(function(ok){if(ok)toast('Supply item deleted');});}
     else if(a.indexOf('delete-wastage:')===0){var wid=a.slice(15);if(confirm('Delete this wastage record?'))remove('wastage',wid).then(function(ok){if(ok)toast('Wastage record deleted');});}
     else if(a.indexOf('delete-transfer:')===0){var tid=a.slice(16);if(confirm('Delete this branch transfer?'))remove('transfers',tid).then(function(ok){if(ok)toast('Transfer deleted');});}
+    else if(a.indexOf('edit-marketing:')===0)openMarketingEdit(a.slice(15));
     else if(a.indexOf('delete-marketing:')===0){var mid=a.slice(17);if(confirm('Delete this Marketing entry? Product/filament availability will be recalculated.'))remove('marketing',mid).then(function(ok){if(ok)toast('Marketing entry deleted');});}
     else if(a==='settings')openSettings();
     else if(a==='sync-sheets')syncGoogleSheets();

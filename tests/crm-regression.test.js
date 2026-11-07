@@ -296,3 +296,13 @@ test('wastage stock guard rejects amounts above stock and any positive wastage w
   assert.equal(context.wastageExceedsStock(1, 0), true, 'positive wastage must be rejected at zero stock');
   assert.equal(context.wastageExceedsStock(1, -104), true, 'positive wastage must be rejected at negative stock');
 });
+
+test('Marketing entries can be edited without replacing their record or changing production accounting', () => {
+  assert.match(source, /function openMarketingEdit\(id\)/);
+  assert.match(source, /data-act="edit-marketing:'\+esc\(m\.id\)/);
+  assert.match(source, /openMarketingEdit\(a\.slice\(15\)\)/);
+  assert.match(source, /save\('marketing',m\.id,updated\)/);
+  assert.match(source, /quantity:qty/);
+  assert.match(source, /Production quantity, filament recipe and recorded production costs are kept unchanged/);
+  assert.match(source, /productAvailableQty\(product\.id,null\)\+currentQty/);
+});
