@@ -1248,10 +1248,10 @@ function openProduct(id){
     +'<datalist id="dl-cat">'+cats.map(function(c){return '<option value="'+esc(c)+'">';}).join('')+'</datalist></div>'
     +'</div>'+foot('<div class="live" id="live"></div>',!!p,p?'Save changes':'Save product');
   var form=openDrawer(p?'Edit product':'New product',html);
-  function syncConsumables(){consumableLines=$('.product-consumable-line',form).map(function(r){return {supplyId:r.querySelector('select').value,quantity:r.querySelector('[name="consumable-quantity"]').value};});}
+  function syncConsumables(){consumableLines=$$('.product-consumable-line',form).map(function(r){return {supplyId:r.querySelector('select').value,quantity:r.querySelector('[name="consumable-quantity"]').value};});}
   function drawConsumables(){var wrap=$('#product-consumables',form);if(wrap)wrap.innerHTML=consumableLines.map(consumableLineHtml).join('');}
   function sync(){
-    lines=$('.line.filament-line',form).map(function(r,i){
+    lines=$$('.line.filament-line',form).map(function(r,i){
       var sel=r.querySelector('select'),key=sel.value,e=S.get(key);
       return {key:key,name:e?e.name:(lines[i]&&lines[i].key===key?lines[i].name:key),grams:r.querySelector('input[aria-label="Grams used"]').value};
     });
