@@ -247,6 +247,7 @@ var ICONS={
   products:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/></svg>',
   sales:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h14v18l-3.5-2-3.5 2-3.5-2L5 21z"/><path d="M9 8h6M9 12h6"/></svg>',
   customers:'<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-7 8-7s8 3 8 7"/></svg>',
+  marketing:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11v2a2 2 0 0 0 2 2h2l10 5V4L7 9H5a2 2 0 0 0-2 2z"/><path d="M7 15l2 6h3l-2-5M17 9a4 4 0 0 1 0 6"/></svg>',
   refresh:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.6-5.9"/><path d="M20 4v5h-5"/></svg>',
   printers:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16M6 4v16M18 4v16M3 20h18"/><path d="M9.5 8h5v3h-5zM12 11v3"/></svg>',
   x:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>'
@@ -722,7 +723,7 @@ function toast(msg,bad){
 }
 
 /* ---------- rendering: shell ---------- */
-var NAV=[['overview','Overview','overview',''],['printers','Printers','printers',''],['filament','Filament','filament','1'],['products','Products','products','2'],['sales','Sales','sales','3'],['customers','Customers','customers',''],['wastage','Wastage','wastage',''],['transfers','Branch Transfers','transfers',''],['supplies','Consumables','products',''],['marketing','Marketing','overview',''],['reports','Reports','overview','']];
+var NAV=[['overview','Overview','overview',''],['printers','Printers','printers',''],['filament','Filament','filament','1'],['products','Products','products','2'],['sales','Sales','sales','3'],['customers','Customers','customers',''],['wastage','Wastage','wastage',''],['transfers','Branch Transfers','transfers',''],['supplies','Consumables','products',''],['marketing','Marketing','marketing',''],['reports','Reports','overview','']];
 function renderNav(){
   $('#nav').innerHTML=NAV.map(function(n){
     return '<button data-view="'+n[0]+'"'+(state.view===n[0]?' aria-current="page"':'')+'>'+ICONS[n[2]]+'<span>'+n[1]+'</span>'+(n[3]?'<span class="step" aria-hidden="true">'+n[3]+'</span>':'')+'</button>';
