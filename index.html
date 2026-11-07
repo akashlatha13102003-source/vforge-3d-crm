@@ -1132,11 +1132,11 @@ function openMarketing(){
       consumeFilament=true;
       if(ctl(form,'addToProducts').checked){
         productId=backend.newId('products');
-        productData={name:productName,category:ctl(form,'category').value.trim(),description:ctl(form,'description').value.trim(),productionDate:ctl(form,'productionDate').value||date,printHours:hrs,printerId:pid,printerName:pr?pr.name:'',price:ctl(form,'price').value.trim()===''?null:num(ctl(form,'price').value),gstRate:null,priceMode:'exclusive',otherCost:ctl(form,'other').value.trim()===''?0:num(ctl(form,'other').value),quantityMade:0,lines:used,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};
+        productData={name:productName,category:ctl(form,'category').value.trim(),description:ctl(form,'description').value.trim(),productionDate:ctl(form,'productionDate').value||date,printHours:hrs,printerId:pid,printerName:pr?pr.name:'',price:ctl(form,'price').value.trim()===''?null:num(ctl(form,'price').value),gstRate:null,priceMode:'exclusive',otherCost:ctl(form,'other').value.trim()===''?0:num(ctl(form,'other').value),quantityMade:qty,lines:used,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};
       }
     }
     var recordId=backend.newId('marketing');
-    var record={date:date,purpose:purpose,productType:isNew?'new':'existing',productId:productId,productName:productName,quantity:qty,lines:used,consumeFilament:consumeFilament,printerId:isNew?ctl(form,'printer').value:(products.find(function(p){return p.id===productId;})||{}).printerId||'',printHours:isNew?(Math.max(0,num(ctl(form,'hours').value))+Math.max(0,Math.min(59,num(ctl(form,'mins').value)))/60):0,otherCost:isNew?num(ctl(form,'other').value):0,filamentCost:cost.fil,electricityCost:cost.elec,totalCost:cost.total,recipient:recipient,project:project,notes:notes,createdAt:new Date().toISOString()};
+    var record={date:date,purpose:purpose,productType:isNew?'new':'existing',productId:productId,productName:productName,quantity:qty,lines:used,consumeFilament:(isNew&&!productId),printerId:isNew?ctl(form,'printer').value:(products.find(function(p){return p.id===productId;})||{}).printerId||'',printHours:isNew?(Math.max(0,num(ctl(form,'hours').value))+Math.max(0,Math.min(59,num(ctl(form,'mins').value)))/60):0,otherCost:isNew?num(ctl(form,'other').value):0,filamentCost:cost.fil,electricityCost:cost.elec,totalCost:cost.total,recipient:recipient,project:project,notes:notes,createdAt:new Date().toISOString()};
     var saveProduct=productData?save('products',productId,productData):Promise.resolve(true);
     return saveProduct.then(function(ok){if(!ok)return false;return save('marketing',recordId,record);}).then(function(ok){if(ok)toast('Marketing entry saved');return ok;});
   });
