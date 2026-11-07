@@ -1102,7 +1102,7 @@ function openProduct(id){
   function sync(){
     lines=$$('.line',form).map(function(r,i){
       var sel=r.querySelector('select'),key=sel.value,e=S.get(key);
-      return {key:key,name:e?e.name:(lines[i]&&lines[i].key===key?lines[i].name:key),grams:r.querySelector('input').value};
+      return {key:key,name:e?e.name:(lines[i]&&lines[i].key===key?lines[i].name:key),grams:r.querySelector('input[aria-label="Grams used"]').value};
     });
   }
   function draw(){var a=$('#lines',form);if(a)a.innerHTML=lines.map(lineHtml).join('');}
