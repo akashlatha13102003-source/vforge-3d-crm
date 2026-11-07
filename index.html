@@ -601,7 +601,7 @@ function getStats(){
 
   (state.marketing||[]).forEach(function(m){
     if(!m.consumeFilament)return;
-    (m.lines||[]).forEach(function(l){var e=map.get(l.key);if(e)e.marketingUsed=(e.marketingUsed||0)+Math.max(0,num(l.grams))*Math.max(0,num(m.quantity));});
+    (m.lines||[]).forEach(function(l){var e=map.get(l.key);if(e)e.marketingUsed=(e.marketingUsed||0)+Math.max(0,num(l.grams))*Math.max(0,num(m.filamentQuantity||m.quantity));});
   });
   state.wastage.forEach(function(w){var e=map.get(w.filamentKey);if(e)e.wastageUsed=(e.wastageUsed||0)+Math.max(0,num(w.grams));});
   state.products.forEach(function(pr){
@@ -1075,7 +1075,7 @@ function openMarketing(){
     +'<div class="field"><label for="m-category">Category (optional)</label><input id="m-category" name="category" placeholder="Toys, Home decor…"></div>'
     +'<div class="field"><label for="m-description">Details (optional)</label><textarea id="m-description" name="description" placeholder="Product details"></textarea></div>'
     +'<div class="field"><label for="m-price">Listed price (optional)</label><input id="m-price" name="price" type="number" min="0" step="any" placeholder="0"></div>'
-    +'<div class="field"><label for="m-qty">Quantity made for this purpose</label><input id="m-qty" name="quantity" type="number" min="1" step="1" value="1"></div>'
+    +'<div class="grid2"><div class="field"><label for="m-qty">Quantity made</label><input id="m-qty" name="quantityMade" type="number" min="1" step="1" value="1"></div><div class="field"><label for="m-used-qty">Quantity used</label><input id="m-used-qty" name="quantityUsed" type="number" min="0" step="1" value="1"></div></div><div class="field"><label>Remaining quantity</label><div class="live" id="m-balance">0 pieces</div></div>'
     +'<div class="part"><h3>Filament used per piece</h3><p class="hint">Add each filament and its grams per piece. Stock is checked before saving.</p><div id="m-lines" class="stack">'+marketingLineHtml(filaments,0)+'</div><button type="button" class="btn" data-marketing-add-line>Add another filament</button></div>'
     +'<div class="part"><h3>Print time and power</h3><div class="field"><label for="m-printer">Printer</label><select id="m-printer" name="printer"><option value="">No printer</option>'+printers.map(function(p){return '<option value="'+esc(p.id)+'">'+esc(p.name)+' ('+num(p.watts)+' W)</option>';}).join('')+'</select></div><div class="grid2"><div class="field"><label for="m-hours">Print time, hours</label><input id="m-hours" name="hours" type="number" min="0" step="1" value="0"></div><div class="field"><label for="m-mins">Minutes</label><input id="m-mins" name="mins" type="number" min="0" max="59" step="1" value="0"></div></div><div class="field"><label for="m-other">Other cost per piece (optional)</label><input id="m-other" name="other" type="number" min="0" step="any" value="0"></div></div></section>'
     +'<div class="field"><label for="m-recipient">Recipient (optional)</label><input id="m-recipient" name="recipient" placeholder="Person / client / team"></div><div class="field"><label for="m-project">Project / campaign (optional)</label><input id="m-project" name="project" placeholder="Project or campaign name"></div><div class="field"><label for="m-notes">Notes (optional)</label><textarea id="m-notes" name="notes" placeholder="Reason or additional details"></textarea></div></div>'
@@ -1091,7 +1091,8 @@ function openMarketing(){
     if(avail)avail.textContent=prod?'Available quantity: '+available+' piece(s)':'Select a product to see available quantity.';
     var cost={fil:0,elec:0,other:0,total:0};
     if(isNew){
-      var l=linesRead(),qty=Math.max(1,Math.floor(num(ctl(form,'quantity').value)||1)),hrs=Math.max(0,num(ctl(form,'hours').value))+Math.max(0,Math.min(59,num(ctl(form,'mins').value)))/60;
+      var l=linesRead(),qty=Math.max(1,Math.floor(num(ctl(form,'quantityMade').value)||1)),hrs=Math.max(0,num(ctl(form,'hours').value))+Math.max(0,Math.min(59,num(ctl(form,'mins').value)))/60;
+      var usedQty=Math.max(0,Math.floor(num(ctl(form,'quantityUsed').value)||0)),balance=qty-usedQty,balanceEl=$('#m-balance',form);if(balanceEl)balanceEl.textContent=balance+' piece(s) remaining';
       cost=productCost({lines:l,printerId:ctl(form,'printer').value,printHours:hrs,otherCost:ctl(form,'other').value},S);
       cost.total*=qty;cost.fil*=qty;cost.elec*=qty;cost.other*=qty;
     }else if(prod){cost=productCost(prod,S);var qty2=Math.max(1,Math.floor(num(ctl(form,'existingQty').value)||1));cost.total*=qty2;cost.fil*=qty2;cost.elec*=qty2;cost.other*=qty2;}
@@ -1110,8 +1111,8 @@ function openMarketing(){
   });
   update();
   wireSubmit(form,function(){
-    var isNew=ctl(form,'productType').value==='new',qty=isNew?Math.max(1,Math.floor(num(ctl(form,'quantity').value))):Math.max(1,Math.floor(num(ctl(form,'existingQty').value)));
-    if(!isFinite(qty)||qty<1)return fail(form,'Enter a valid quantity.');
+    var isNew=ctl(form,'productType').value==='new',made=isNew?Math.max(1,Math.floor(num(ctl(form,'quantityMade').value))):0,usedQty=isNew?Math.floor(num(ctl(form,'quantityUsed').value)):Math.max(1,Math.floor(num(ctl(form,'existingQty').value))),qty=usedQty;
+    if(!isFinite(qty)||qty<0||(isNew?(made<1||qty>made):(qty<1)))return fail(form,isNew?'Quantity used must be between 0 and quantity made.':'Enter a valid quantity.');
     var purpose=ctl(form,'purpose').value,date=ctl(form,'date').value||today(),recipient=ctl(form,'recipient').value.trim(),project=ctl(form,'project').value.trim(),notes=ctl(form,'notes').value.trim();
     var productId='',productName='',used=[],cost={fil:0,elec:0,other:0,total:0},consumeFilament=false,productData=null;
     if(!isNew){
@@ -1123,20 +1124,20 @@ function openMarketing(){
     }else{
       productName=ctl(form,'name').value.trim();if(!productName)return fail(form,'Enter the new product name.');
       used=linesRead();if(!used.length)return fail(form,'Add at least one filament and enter grams used per piece.');
-      var required=new Map();used.forEach(function(l){required.set(l.key,(required.get(l.key)||0)+l.grams*qty);});
+      var required=new Map();used.forEach(function(l){required.set(l.key,(required.get(l.key)||0)+l.grams*made);});
       var shortage='';required.forEach(function(grams,key){var entry=S.get(key),left=entry?entry.left:0;if(grams>left+0.000001&&!shortage)shortage='Not enough '+(entry?entry.name:key)+': '+fmtG(grams)+' required, but '+fmtG(left)+' available.';});
       if(shortage)return fail(form,shortage);
       var hrs=Math.max(0,num(ctl(form,'hours').value))+Math.max(0,Math.min(59,num(ctl(form,'mins').value)))/60,pid=ctl(form,'printer').value,pr=printers.find(function(x){return x.id===pid;});
       cost=productCost({lines:used,printerId:pid,printHours:hrs,otherCost:ctl(form,'other').value},S);
-      cost={fil:cost.fil*qty,elec:cost.elec*qty,other:cost.other*qty,total:cost.total*qty};
+      cost={fil:cost.fil*made,elec:cost.elec*made,other:cost.other*made,total:cost.total*made};
       consumeFilament=true;
       if(ctl(form,'addToProducts').checked){
         productId=backend.newId('products');
-        productData={name:productName,category:ctl(form,'category').value.trim(),description:ctl(form,'description').value.trim(),productionDate:ctl(form,'productionDate').value||date,printHours:hrs,printerId:pid,printerName:pr?pr.name:'',price:ctl(form,'price').value.trim()===''?null:num(ctl(form,'price').value),gstRate:null,priceMode:'exclusive',otherCost:ctl(form,'other').value.trim()===''?0:num(ctl(form,'other').value),quantityMade:qty,lines:used,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};
+        productData={name:productName,category:ctl(form,'category').value.trim(),description:ctl(form,'description').value.trim(),productionDate:ctl(form,'productionDate').value||date,printHours:hrs,printerId:pid,printerName:pr?pr.name:'',price:ctl(form,'price').value.trim()===''?null:num(ctl(form,'price').value),gstRate:null,priceMode:'exclusive',otherCost:ctl(form,'other').value.trim()===''?0:num(ctl(form,'other').value),quantityMade:made,lines:used,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};
       }
     }
     var recordId=backend.newId('marketing');
-    var record={date:date,purpose:purpose,productType:isNew?'new':'existing',productId:productId,productName:productName,quantity:qty,lines:used,consumeFilament:(isNew&&!productId),printerId:isNew?ctl(form,'printer').value:(products.find(function(p){return p.id===productId;})||{}).printerId||'',printHours:isNew?(Math.max(0,num(ctl(form,'hours').value))+Math.max(0,Math.min(59,num(ctl(form,'mins').value)))/60):0,otherCost:isNew?num(ctl(form,'other').value):0,filamentCost:cost.fil,electricityCost:cost.elec,totalCost:cost.total,recipient:recipient,project:project,notes:notes,createdAt:new Date().toISOString()};
+    var record={date:date,purpose:purpose,productType:isNew?'new':'existing',productId:productId,productName:productName,quantity:qty,lines:used,consumeFilament:(isNew&&!productId),filamentQuantity:isNew?made:0,quantityMade:isNew?made:qty,printerId:isNew?ctl(form,'printer').value:(products.find(function(p){return p.id===productId;})||{}).printerId||'',printHours:isNew?(Math.max(0,num(ctl(form,'hours').value))+Math.max(0,Math.min(59,num(ctl(form,'mins').value)))/60):0,otherCost:isNew?num(ctl(form,'other').value):0,filamentCost:cost.fil,electricityCost:cost.elec,totalCost:cost.total,recipient:recipient,project:project,notes:notes,createdAt:new Date().toISOString()};
     var saveProduct=productData?save('products',productId,productData):Promise.resolve(true);
     return saveProduct.then(function(ok){if(!ok)return false;return save('marketing',recordId,record);}).then(function(ok){if(ok)toast('Marketing entry saved');return ok;});
   });
