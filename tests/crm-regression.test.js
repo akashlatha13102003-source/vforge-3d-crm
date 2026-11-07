@@ -17,7 +17,7 @@ function extractFunction(name) {
 }
 
 const declarations = [
-  'productGst', 'saleLines', 'productSoldQty', 'productAvailableQty', 'productProductionStockError',
+  'supplyTotals', 'productGst', 'saleLines', 'productSoldQty', 'productAvailableQty', 'productProductionStockError',
   'productExtraQtyForSale', 'productSavedExtraQtyForSale', 'saleRev', 'saleTax', 'saleTaxable',
   'saleCost', 'saleProfit', 'getStats', 'powerOf', 'productCost', 'productProductionStockError', 'fmtG', 'wastageExceedsStock'
 ].map(extractFunction).join('\n');
@@ -295,6 +295,39 @@ test('wastage stock guard rejects amounts above stock and any positive wastage w
   assert.equal(context.wastageExceedsStock(896, 896), false, 'exactly available stock may be recorded');
   assert.equal(context.wastageExceedsStock(1, 0), true, 'positive wastage must be rejected at zero stock');
   assert.equal(context.wastageExceedsStock(1, -104), true, 'positive wastage must be rejected at negative stock');
+});
+
+test('product consumables are optional, multiple, and reflected in Consumables stock without duplicate usage records', () => {
+  context.state = {
+    products: [{ id: 'p1', consumables: [
+      { supplyId: 'box', name: 'Packaging box', quantity: 2 },
+      { supplyId: 'tape', name: 'Tape', quantity: 3 }
+    ] }],
+    supplies: [
+      { id: 'box', purchases: [{ quantity: 10, total: 100 }], usage: [{ quantity: 1 }] },
+      { id: 'tape', purchases: [{ quantity: 20, total: 50 }], usage: [] }
+    ]
+  };
+  const totals = context.supplyTotals;
+  assert.equal(totals(context.state.supplies[0]).used, 3, 'manual usage plus product usage');
+  assert.equal(totals(context.state.supplies[0]).left, 7, 'packaging stock after product save');
+  assert.equal(totals(context.state.supplies[1]).left, 17, 'tape stock after product save');
+  context.state.products[0].consumables = [{ supplyId: 'box', quantity: 4 }];
+  assert.equal(totals(context.state.supplies[0]).left, 5, 'editing the product replaces its prior allocation');
+  context.state.products[0].consumables = [];
+  assert.equal(totals(context.state.supplies[0]).left, 9, 'removing product consumables returns stock');
+});
+
+test('Add Product supports optional multiple consumables and validates stock before saving', () => {
+  const start = source.indexOf('function openProduct(');
+  const end = source.indexOf('/* ---------- forms: printer ---------- */', start);
+  const form = source.slice(start, end);
+  assert.match(form, /Consumables used <span class="opt">optional/);
+  assert.match(form, /data-add-consumable/);
+  assert.match(form, /data-remove-consumable/);
+  assert.match(form, /selectedConsumables/);
+  assert.match(form, /Not enough '\+supply\.name/);
+  assert.match(form, /consumables:selectedConsumables/);
 });
 
 test('Marketing entries can be edited without replacing their record or changing production accounting', () => {
