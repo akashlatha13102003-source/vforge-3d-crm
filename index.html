@@ -876,7 +876,7 @@ function vSales(){
   return '<div style="overflow-x:auto"><table><thead><tr><th class="hide-sm">Date</th><th>Customer</th><th class="hide-sm">Product</th><th class="num hide-sm">Qty</th><th class="num">Total</th><th class="num hide-sm">Profit</th><th>Payment</th></tr></thead><tbody>'+body+'</tbody></table></div>';
 }
 
-function supplyTotals(item){var bought=(item.purchases||[]).reduce(function(t,x){return t+num(x.quantity);},0);var used=(item.usage||[]).reduce(function(t,x){return t+num(x.quantity);},0);var spend=(item.purchases||[]).reduce(function(t,x){return t+num(x.total);},0);return {bought:bought,used:used,left:bought-used,spend:spend,unitCost:bought?spend/bought:0};}
+function supplyTotals(item){var bought=(item.purchases||[]).reduce(function(t,x){return t+num(x.quantity);},0);var manualUsed=(item.usage||[]).reduce(function(t,x){return t+num(x.quantity);},0);var productUsed=(state.products||[]).reduce(function(total,p){return total+(p.consumables||[]).reduce(function(t,c){return t+(c.supplyId===item.id?num(c.quantity):0);},0);},0);var used=manualUsed+productUsed;var spend=(item.purchases||[]).reduce(function(t,x){return t+num(x.total);},0);return {bought:bought,used:used,left:bought-used,spend:spend,unitCost:bought?spend/bought:0};}
 function vSupplies(){
  var items=state.supplies.slice().sort(byName);
  if(!items.length)return empty('No supplies tracked yet','Track glue, keychains, packaging boxes, covers, labels, tape and other non-filament stock.','buy-supply','Log first purchase');
@@ -1185,6 +1185,7 @@ function openProduct(id){
   var lines=p?(p.lines||[]).map(function(l){return {key:l.key,name:l.name,grams:l.grams};}):[];
   if(!lines.length&&opts.length)lines=[{key:opts[0].key,name:opts[0].name,grams:''}];
   var v=p||{name:'',category:'',description:'',printHours:'',price:'',otherCost:'',printerId:'',quantityMade:1,gstRate:'',priceMode:'exclusive'};
+   var consumableLines=(p&&Array.isArray(p.consumables)?p.consumables:[]).map(function(c){return {supplyId:c.supplyId||'',quantity:c.quantity==null?'':c.quantity};});
   var ph=num(v.printHours),hh=Math.floor(ph+1e-9),mm=Math.round((ph-hh)*60);if(mm>=60){hh+=1;mm=0;}
   var printers=state.printers.slice().sort(byName);
   var cats=uniq(state.products.map(function(x){return x.category;}));
@@ -1222,6 +1223,8 @@ function openProduct(id){
     :'<div class="info-box">Log a filament purchase first, so there is a cost per gram to work from.</div><div><button type="button" class="btn primary" data-goto-purchase>Log a purchase</button></div>';
   var printerOpts='<option value="">No printer</option>'+printers.map(function(x){return '<option value="'+esc(x.id)+'"'+(x.id===v.printerId?' selected':'')+'>'+esc(x.name)+' ('+num(x.watts)+' W)</option>';}).join('')
     +(p&&v.printerId&&!printers.some(function(x){return x.id===v.printerId;})?'<option value="'+esc(v.printerId)+'" selected>'+esc(p.printerName||'Deleted printer')+' (no longer added)</option>':'');
+  var supplyOptions='<option value="">Select consumable</option>'+state.supplies.slice().sort(byName).map(function(x){var oldQty=consumableLines.reduce(function(t,c){return t+(c.supplyId===x.id?num(c.quantity):0);},0),left=supplyTotals(x).left+oldQty;return '<option value="'+esc(x.id)+'">'+esc(x.name)+' — '+left+' '+esc(x.unit||'pcs')+' available</option>';}).join('');
+  function consumableLineHtml(c,i){return '<div class="line product-consumable-line"><div class="field"><select name="consumable-'+i+'" aria-label="Consumable">'+supplyOptions.replace('value="'+esc(c.supplyId)+'"','value="'+esc(c.supplyId)+'" selected')+'</select></div><input name="consumable-quantity" type="number" min="0.0001" step="any" placeholder="Qty used" aria-label="Consumable quantity" value="'+esc(c.quantity==null?'':c.quantity)+'"><button type="button" class="iconbtn" data-remove-consumable="'+i+'" aria-label="Remove consumable">'+ICONS.x+'</button></div>';}
   var powerPart=printers.length
     ?'<div class="field"><label for="p-printer">Printer</label><select id="p-printer" name="printer">'+printerOpts+'</select></div>'
       +'<div class="grid2 keep"><div class="field"><label for="p-hours">Print time, hours</label><input id="p-hours" name="hours" type="number" inputmode="numeric" min="0" step="1" placeholder="0" value="'+(hh?hh:'')+'"></div>'
@@ -1235,6 +1238,7 @@ function openProduct(id){
     +'<div class="part"><h3>Grams used</h3><p class="hint">Filament used to print one piece, supports and waste included.</p>'+gramsPart
     +'<div class="field"><label for="p-made">Quantity made</label><input id="p-made" name="made" type="number" inputmode="numeric" min="0" step="1" placeholder="0" value="'+esc(v.quantityMade==null?0:v.quantityMade)+'"><span class="small muted">This quantity is deducted from filament stock. Leave 0 if this is only a product recipe.</span></div>'
     +'<div class="field"><label for="p-other">Other cost per piece <span class="opt">optional</span></label><input id="p-other" name="other" type="number" inputmode="decimal" min="0" step="any" placeholder="Packaging, labour" value="'+esc(v.otherCost)+'"></div></div>'
+    +'<div class="part"><h3>Consumables used <span class="opt">optional</span></h3><p class="hint">Select one or more items from Consumables stock. Usage is reflected automatically when this product is saved.</p>'+(state.supplies.length?'<div id="product-consumables" class="stack">'+consumableLines.map(consumableLineHtml).join('')+'</div><button type="button" class="btn" data-add-consumable>Add another consumable</button>':'<div class="info-box">No consumables have been added to stock yet. Add them from the Consumables tab.</div>')+'</div>'
     +'<div class="part"><h3>Print time and power</h3><p class="hint">Time to print one piece. Electricity is watts \u00d7 hours \u00d7 your price per unit.</p>'+powerPart+'</div>'
     +'<div class="part"><h3>Details and price</h3>'
     +'<div class="field"><label for="p-cat">Category <span class="opt">optional</span></label><input id="p-cat" name="category" list="dl-cat" autocomplete="off" value="'+esc(v.category||'')+'"></div>'
@@ -1244,8 +1248,10 @@ function openProduct(id){
     +'<datalist id="dl-cat">'+cats.map(function(c){return '<option value="'+esc(c)+'">';}).join('')+'</datalist></div>'
     +'</div>'+foot('<div class="live" id="live"></div>',!!p,p?'Save changes':'Save product');
   var form=openDrawer(p?'Edit product':'New product',html);
+  function syncConsumables(){consumableLines=$$('.product-consumable-line',form).map(function(r){return {supplyId:r.querySelector('select').value,quantity:r.querySelector('[name="consumable-quantity"]').value};});}
+  function drawConsumables(){var wrap=$('#product-consumables',form);if(wrap)wrap.innerHTML=consumableLines.map(consumableLineHtml).join('');}
   function sync(){
-    lines=$$('.line',form).map(function(r,i){
+    lines=$$('.line.filament-line',form).map(function(r,i){
       var sel=r.querySelector('select'),key=sel.value,e=S.get(key);
       return {key:key,name:e?e.name:(lines[i]&&lines[i].key===key?lines[i].name:key),grams:r.querySelector('input[aria-label="Grams used"]').value};
     });
@@ -1275,6 +1281,8 @@ function openProduct(id){
   });
   form.addEventListener('change',upd);
   form.addEventListener('click',function(e){
+    var addConsumable=e.target.closest('[data-add-consumable]');if(addConsumable){syncConsumables();consumableLines.push({supplyId:'',quantity:''});drawConsumables();return;}
+    var removeConsumable=e.target.closest('[data-remove-consumable]');if(removeConsumable){syncConsumables();consumableLines.splice(+removeConsumable.dataset.removeConsumable,1);drawConsumables();return;}
     var pick=e.target.closest('[data-filament-pick]');
     if(pick){
       var row=pick.closest('.line'),key=pick.getAttribute('data-filament-pick'),entry=S.get(key);
@@ -1300,6 +1308,11 @@ function openProduct(id){
     sync();
     var name=ctl(form,'name').value.trim();
     if(!name)return fail(form,'Add a product name.');
+    syncConsumables();
+    var selectedConsumables=consumableLines.filter(function(c){return c.supplyId&&num(c.quantity)>0;}).map(function(c){var item=state.supplies.find(function(x){return x.id===c.supplyId;});return {supplyId:c.supplyId,name:item?item.name:'',unit:item?item.unit||'pcs':'pcs',quantity:num(c.quantity)};});
+    var requestedBySupply={};selectedConsumables.forEach(function(c){requestedBySupply[c.supplyId]=(requestedBySupply[c.supplyId]||0)+c.quantity;});
+    for(var supplyId in requestedBySupply){var supply=state.supplies.find(function(x){return x.id===supplyId;});if(!supply)return fail(form,'A selected consumable is no longer available. Refresh and try again.');var previous=p?(p.consumables||[]).reduce(function(t,c){return t+(c.supplyId===supplyId?num(c.quantity):0);},0):0;var available=supplyTotals(supply).left+previous;if(requestedBySupply[supplyId]>available+0.000001)return fail(form,'Not enough '+supply.name+': '+available+' '+(supply.unit||'pcs')+' available. Reduce the quantity or log a purchase.');}
+    if(consumableLines.some(function(c){return (c.supplyId&&!(num(c.quantity)>0))||(!c.supplyId&&String(c.quantity||'').trim()!=='' );}))return fail(form,'For each consumable row, choose an item and enter a quantity above zero, or remove the empty row.');
     var used=lines.filter(function(l){return l.key&&num(l.grams)>0;}).map(function(l){return {key:l.key,name:l.name,grams:num(l.grams)};});
     /* Recipe grams are optional for legacy or not-yet-weighed products. */
     var pid=ctl(form,'printer').value,hrs=hoursVal();
@@ -1314,7 +1327,7 @@ function openProduct(id){
     /* Unknown print time, electricity and selling price are allowed; unknown costs must not be inferred as real zeroes. */
     var pr=state.printers.find(function(x){return x.id===pid;});
     var d={name:name,category:ctl(form,'category').value.trim(),description:ctl(form,'description').value.trim(),printHours:hrs,printerId:pid,printerName:pr?pr.name:(p&&p.printerId===pid?p.printerName||'':''),
-      price:ctl(form,'price').value.trim()===''?null:num(ctl(form,'price').value),gstRate:ctl(form,'gstRate').value===''?null:num(ctl(form,'gstRate').value),priceMode:ctl(form,'priceMode').value,otherCost:ctl(form,'other').value.trim()===''?null:num(ctl(form,'other').value),quantityMade:madeQty,lines:used,productionDate:ctl(form,'productionDate').value||'',createdAt:p?p.createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};
+      price:ctl(form,'price').value.trim()===''?null:num(ctl(form,'price').value),gstRate:ctl(form,'gstRate').value===''?null:num(ctl(form,'gstRate').value),priceMode:ctl(form,'priceMode').value,otherCost:ctl(form,'other').value.trim()===''?null:num(ctl(form,'other').value),quantityMade:madeQty,lines:used,consumables:selectedConsumables,productionDate:ctl(form,'productionDate').value||'',createdAt:p?p.createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};
     return save('products',p?p.id:backend.newId('products'),d).then(function(ok){if(ok)toast(p?'Product updated':'Product saved');return ok;});
   });
   if(p)armDelete(form,function(){return remove('products',p.id).then(function(ok){if(ok)toast('Product deleted');return ok;});});
