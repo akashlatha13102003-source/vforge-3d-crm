@@ -31,7 +31,7 @@ const context = {
   ver: 1,
   statsVer: -1,
   statsCache: null,
-  state: { filaments: [], products: [], sales: [], wastage: [], printers: [], settings: { powerRate: 10.50 } },
+  state: { filaments: [], products: [], sales: [], wastage: [], marketing: [], printers: [], settings: { powerRate: 10.50 } },
 };
 vm.createContext(context);
 vm.runInContext(declarations, context);
@@ -122,14 +122,38 @@ test('quantity made deducts recipe stock once, with only excess sales deducting 
 });
 
 
-test('product availability subtracts sold quantity from quantity made', () => {
+test('product availability subtracts sold and Marketing quantities from quantity made', () => {
   context.state = {
     products: [{ id: 'p1', quantityMade: 2, lines: [] }],
     sales: [{ id: 's1', productId: 'p1', qty: 1 }],
+    marketing: [{ id: 'm1', productId: 'p1', quantity: 1 }],
     filaments: [], wastage: [], settings: {}
   };
-  assert.equal(context.productAvailableQty('p1'), 1, 'one of two made remains after one sale');
-  assert.equal(context.productAvailableQty('p1', 's1'), 2, 'editing a sale excludes that sale from current stock');
+  assert.equal(context.productAvailableQty('p1'), 0, 'one of two made is sold and the other is allocated to Marketing');
+  assert.equal(context.productAvailableQty('p1', 's1'), 1, 'editing a sale excludes that sale but keeps Marketing allocation');
+});
+
+test('Marketing allocations reduce finished stock and new-product filament exactly once', () => {
+  context.state = {
+    filaments: [{ id: 'purchase-1', key: 'brand|pla|red', brand: 'Brand', material: 'PLA', colour: 'Red', hex: '#ff0000', weight: 1000, spools: 1, total: 1000 }],
+    products: [{ id: 'p1', name: 'Existing product', quantityMade: 2, lines: [{ key: 'brand|pla|red', grams: 100 }] }],
+    sales: [], wastage: [], marketing: [{ id: 'm1', productId: 'p1', quantity: 1, consumeFilament: false }],
+    printers: [], settings: { powerRate: 10.5 }
+  };
+  context.ver++; context.statsCache = null;
+  assert.equal(context.productAvailableQty('p1'), 1, 'one existing piece remains after Marketing allocation');
+  approx(context.getStats().get('brand|pla|red').left, 800, 'existing product filament was consumed at production, not again at allocation');
+
+  context.state.products = [];
+  context.state.marketing = [{ id: 'm2', productId: '', quantity: 2, consumeFilament: true, lines: [{ key: 'brand|pla|red', grams: 50 }] }];
+  context.ver++; context.statsCache = null;
+  approx(context.getStats().get('brand|pla|red').left, 900, 'new product without catalogue entry consumes 2 × 50g');
+
+  context.state.products = [{ id: 'p2', name: 'New catalogue product', quantityMade: 2, lines: [{ key: 'brand|pla|red', grams: 50 }] }];
+  context.state.marketing = [{ id: 'm3', productId: 'p2', quantity: 2, consumeFilament: false, lines: [{ key: 'brand|pla|red', grams: 50 }] }];
+  context.ver++; context.statsCache = null;
+  approx(context.getStats().get('brand|pla|red').left, 900, 'new product added to catalogue consumes production grams only once');
+  assert.equal(context.productAvailableQty('p2'), 0, 'all pieces made for Marketing are allocated, not available for sale');
 });
 
 test('sale filament warning counts only pieces beyond available finished stock', () => {
@@ -195,11 +219,11 @@ test('cloud record reads and deletes are explicitly scoped to the signed-in user
   assert.match(source, /user_id:cloudSession\.user\.id/);
 });
 
-test('JSON backup export includes all eight CRM collections/settings', () => {
+test('JSON backup export includes all CRM collections/settings including Marketing', () => {
   const exportStart = source.indexOf("offerFile('vforge-3d-backup.json'");
   assert.notEqual(exportStart, -1, 'JSON backup export action must exist');
   const exportHandler = source.slice(exportStart, exportStart + 700);
-  for (const key of ['filaments','printers','products','customers','sales','wastage','transfers','settings']) {
+  for (const key of ['filaments','printers','products','customers','sales','wastage','transfers','supplies','marketing','settings']) {
     assert.match(exportHandler, new RegExp(key + ':state\\.' + key));
   }
 });

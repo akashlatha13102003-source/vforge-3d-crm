@@ -221,7 +221,7 @@ tr.click:hover td{background:color-mix(in srgb,var(--surface) 70%,transparent)}
 'use strict';
 
 /* ---------- helpers ---------- */
-var COLS=['filaments','printers','products','customers','sales','wastage','transfers','supplies','settings'];
+var COLS=['filaments','printers','products','customers','sales','wastage','transfers','supplies','marketing','settings'];
 function $(s,r){return (r||document).querySelector(s);}
 function $$(s,r){return Array.prototype.slice.call((r||document).querySelectorAll(s));}
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
@@ -254,7 +254,7 @@ var ICONS={
 
 /* ---------- state ---------- */
 var DEFAULT_RATE=8;
-var state={filaments:[],printers:[],products:[],customers:[],sales:[],wastage:[],transfers:[],supplies:[],settings:{currency:'INR',lowStock:200,powerRate:DEFAULT_RATE,googleSheetsUrl:'',lastSheetsSync:''},
+var state={filaments:[],printers:[],products:[],customers:[],sales:[],wastage:[],transfers:[],supplies:[],marketing:[],settings:{currency:'INR',lowStock:200,powerRate:DEFAULT_RATE,googleSheetsUrl:'',lastSheetsSync:''},
   loaded:{},ready:false,view:'overview',period:'30',q:'',storage:'workspace'};
 var ver=0,statsVer=-1,statsCache=null,backend=null,dlCap=null;
 
@@ -589,15 +589,20 @@ function getStats(){
 
   // Sales can contain multiple products. Preserve legacy single-product records and
   // apply the same production-vs-sale inventory rule to each line item.
-  var soldByProduct=new Map();
+  var soldByProduct=new Map(),marketedByProduct=new Map();
   state.sales.forEach(function(s){saleLines(s).forEach(function(l){var pid=l.productId||s.productId;if(!pid)return;soldByProduct.set(pid,(soldByProduct.get(pid)||0)+Math.max(0,num(l.qty)));});});
+  (state.marketing||[]).forEach(function(m){if(m.productId)marketedByProduct.set(m.productId,(marketedByProduct.get(m.productId)||0)+Math.max(0,num(m.quantity)));});
   state.sales.forEach(function(s){saleLines(s).forEach(function(l){
     var pid=l.productId||s.productId,prod=state.products.find(function(pr){return pr.id===pid;});
     if(!prod){(l.usage||s.usage||[]).forEach(function(u){var e=map.get(u.key);if(e)e.used+=num(u.grams)*num(l.qty||s.qty);});return;}
     if(Math.max(0,num(prod.quantityMade))<=0){(l.usage||[]).forEach(function(u){var e=map.get(u.key);if(e)e.used+=num(u.grams)*num(l.qty);});}
   });});
-  state.products.forEach(function(pr){var madeQty=Math.max(0,num(pr.quantityMade)),soldQty=soldByProduct.get(pr.id)||0,extraQty=Math.max(0,soldQty-madeQty);if(extraQty>0)(pr.lines||[]).forEach(function(l){var e=map.get(l.key);if(e)e.saleExtraUsed+=num(l.grams)*extraQty;});});
+  state.products.forEach(function(pr){var madeQty=Math.max(0,num(pr.quantityMade)),soldQty=soldByProduct.get(pr.id)||0,marketedQty=marketedByProduct.get(pr.id)||0,extraQty=Math.max(0,soldQty+marketedQty-madeQty);if(extraQty>0)(pr.lines||[]).forEach(function(l){var e=map.get(l.key);if(e)e.saleExtraUsed+=num(l.grams)*extraQty;});});
 
+  (state.marketing||[]).forEach(function(m){
+    if(!m.consumeFilament)return;
+    (m.lines||[]).forEach(function(l){var e=map.get(l.key);if(e)e.marketingUsed=(e.marketingUsed||0)+Math.max(0,num(l.grams))*Math.max(0,num(m.filamentQuantity||m.quantity));});
+  });
   state.wastage.forEach(function(w){var e=map.get(w.filamentKey);if(e)e.wastageUsed=(e.wastageUsed||0)+Math.max(0,num(w.grams));});
   state.products.forEach(function(pr){
     (pr.lines||[]).forEach(function(l){
@@ -607,7 +612,7 @@ function getStats(){
       if(x)x.grams+=num(l.grams);else e.prods.push({id:pr.id,name:pr.name||'Untitled',grams:num(l.grams)});
     });
   });
-  map.forEach(function(e){e.wastageUsed=e.wastageUsed||0;e.actualUsed=e.productionUsed+e.used+e.saleExtraUsed+e.wastageUsed;e.left=e.bought-e.actualUsed;e.cpg=e.bought>0?e.paid/e.bought:0;e.name=fname(e);});
+  map.forEach(function(e){e.wastageUsed=e.wastageUsed||0;e.marketingUsed=e.marketingUsed||0;e.actualUsed=e.productionUsed+e.used+e.saleExtraUsed+e.marketingUsed+e.wastageUsed;e.left=e.bought-e.actualUsed;e.cpg=e.bought>0?e.paid/e.bought:0;e.name=fname(e);});
   statsCache=map;statsVer=ver;return map;
 }
 function powerOf(printerId,hours){
@@ -660,10 +665,17 @@ function productSoldQty(productId,excludeSaleId){
     },0);
   },0);
 }
+function productMarketingQty(productId,excludeMarketingId){
+  return (state.marketing||[]).reduce(function(total,m){
+    if(excludeMarketingId&&m.id===excludeMarketingId)return total;
+    return total+((m.productId===productId)?Math.max(0,num(m.quantity)):0);
+  },0);
+}
 function productAvailableQty(productId,excludeSaleId){
   var prod=state.products.find(function(p){return p.id===productId;});
   if(!prod)return 0;
-  return Math.max(0,Math.max(0,num(prod.quantityMade))-productSoldQty(productId,excludeSaleId));
+  var marketed=(state.marketing||[]).reduce(function(t,m){return t+(m.productId===productId?Math.max(0,num(m.quantity)):0);},0);
+  return Math.max(0,Math.max(0,num(prod.quantityMade))-productSoldQty(productId,excludeSaleId)-marketed);
 }
 function productExtraQtyForSale(productId,qty,excludeSaleId){
   return Math.max(0,Math.max(0,num(qty))-productAvailableQty(productId,excludeSaleId));
@@ -672,8 +684,9 @@ function productSavedExtraQtyForSale(productId,saleId){
   var prod=state.products.find(function(p){return p.id===productId;});
   if(!prod||!saleId)return 0;
   var made=Math.max(0,num(prod.quantityMade));
-  var allExtra=Math.max(0,productSoldQty(productId,null)-made);
-  var withoutCurrentExtra=Math.max(0,productSoldQty(productId,saleId)-made);
+  var marketedQty=(state.marketing||[]).reduce(function(t,m){return t+(m.productId===productId?Math.max(0,num(m.quantity)):0);},0);
+  var allExtra=Math.max(0,productSoldQty(productId,null)+marketedQty-made);
+  var withoutCurrentExtra=Math.max(0,productSoldQty(productId,saleId)+marketedQty-made);
   return Math.max(0,allExtra-withoutCurrentExtra);
 }
 function saleRev(s){return Math.round(saleLines(s).reduce(function(t,l){return t+num(l.finalUnit!=null?l.finalUnit:(num(l.unitPrice)*(l.priceMode==='inclusive'?1:1+num(l.gstRate)/100)))*num(l.qty);},0)*100)/100;}
@@ -708,7 +721,7 @@ function toast(msg,bad){
 }
 
 /* ---------- rendering: shell ---------- */
-var NAV=[['overview','Overview','overview',''],['printers','Printers','printers',''],['filament','Filament','filament','1'],['products','Products','products','2'],['sales','Sales','sales','3'],['customers','Customers','customers',''],['wastage','Wastage','wastage',''],['transfers','Branch Transfers','transfers',''],['supplies','Consumables','products',''],['reports','Reports','overview','']];
+var NAV=[['overview','Overview','overview',''],['printers','Printers','printers',''],['filament','Filament','filament','1'],['products','Products','products','2'],['sales','Sales','sales','3'],['customers','Customers','customers',''],['wastage','Wastage','wastage',''],['transfers','Branch Transfers','transfers',''],['supplies','Consumables','products',''],['marketing','Marketing','overview',''],['reports','Reports','overview','']];
 function renderNav(){
   $('#nav').innerHTML=NAV.map(function(n){
     return '<button data-view="'+n[0]+'"'+(state.view===n[0]?' aria-current="page"':'')+'>'+ICONS[n[2]]+'<span>'+n[1]+'</span>'+(n[3]?'<span class="step" aria-hidden="true">'+n[3]+'</span>':'')+'</button>';
@@ -723,7 +736,7 @@ function renderNotice(){
 }
 function searchBox(ph){return '<label class="search"><span class="sr">Search</span><input id="q" type="search" placeholder="'+esc(ph)+'" value="'+esc(state.q)+'" autocomplete="off"></label>';}
 function renderToolbar(){
-  var v=state.view,T={overview:'Overview',printers:'Printers',filament:'Filament',products:'Products',sales:'Sales',customers:'Customers',reports:'Reports',wastage:'Wastage',transfers:'Branch Transfers',supplies:'Consumables & Supplies'},right='';
+  var v=state.view,T={overview:'Overview',printers:'Printers',filament:'Filament',products:'Products',sales:'Sales',customers:'Customers',reports:'Reports',wastage:'Wastage',transfers:'Branch Transfers',supplies:'Consumables & Supplies',marketing:'Marketing'},right='';
   if(v==='overview')right='<div class="seg" role="group" aria-label="Period"><button data-act="period:30" aria-pressed="'+(state.period==='30')+'">Last 30 days</button><button data-act="period:all" aria-pressed="'+(state.period==='all')+'">All time</button></div><button class="btn" data-act="settings">Settings</button>';
   if(v==='printers')right='<button class="btn" data-act="settings">Electricity price</button><button class="btn primary" data-act="new-printer">Add printer</button>';
   if(v==='filament')right='<button class="btn primary" data-act="new-purchase">Log purchase</button>';
@@ -732,7 +745,8 @@ function renderToolbar(){
   if(v==='customers')right=searchBox('Search customers')+'<button class="btn primary" data-act="new-customer">Add customer</button>';
   if(v==='wastage')right='<button class="btn primary" data-act="new-wastage">Log wastage</button>';
   if(v==='transfers')right='<button class="btn primary" data-act="new-transfer">Record transfer</button>';
-  if(v==='supplies')right='<button class="btn" data-act="use-supply">Record usage</button><button class="btn primary" data-act="buy-supply">Log purchase</button>'; 
+  if(v==='supplies')right='<button class="btn" data-act="use-supply">Record usage</button><button class="btn primary" data-act="buy-supply">Log purchase</button>';
+  if(v==='marketing')right=searchBox('Search marketing records')+'<button class="btn primary" data-act="new-marketing">Add entry</button>'; 
   if(v==='reports')right='<button class="btn" data-act="test-sheets">Test Google Sheets</button><button class="btn primary" data-act="sync-sheets">Sync to Google Sheets</button><button class="btn" data-act="export-report-csv">Export reports CSV</button>';
   var refresh='<span class="small muted hide-sm" id="stamp"></span><button class="btn" id="refresh-btn" data-act="refresh" title="Load the latest data">'+ICONS.refresh+'<span>Refresh</span></button>';
   $('#toolbar').innerHTML='<h1>'+T[v]+'</h1><div class="bar-right">'+refresh+right+'</div>';
@@ -741,7 +755,7 @@ function renderToolbar(){
 function renderContent(){
   var c=$('#content');
   if(!state.ready){c.innerHTML='<p class="muted">Loading your workspace\u2026</p>';return;}
-  var fn={overview:vOverview,printers:vPrinters,filament:vFilament,products:vProducts,sales:vSales,customers:vCustomers,reports:vReports,wastage:vWastage,transfers:vTransfers,supplies:vSupplies}[state.view];
+  var fn={overview:vOverview,printers:vPrinters,filament:vFilament,products:vProducts,sales:vSales,customers:vCustomers,reports:vReports,wastage:vWastage,transfers:vTransfers,supplies:vSupplies,marketing:vMarketing}[state.view];
   c.innerHTML=fn();
 }
 function render(){renderNav();renderNotice();renderToolbar();renderContent();}
@@ -757,7 +771,7 @@ function spoolRow(e,low){
   var left=e.left<0?'Over by '+fmtG(-e.left):fmtG(e.left)+' left';
   return '<div class="spool"><div class="spool-head"><span class="dot" style="background:'+safeHex(e.hex)+'"></span><strong>'+esc(e.name)+'</strong>'+status+'<span class="spool-left">'+left+'</span></div>'
     +'<div class="bar-track" role="img" aria-label="'+esc(e.name)+': '+Math.round(pc)+' percent left"><i style="width:'+pc.toFixed(1)+'%;background-color:'+safeHex(e.hex)+'"></i></div>'
-    +'<div class="small muted">'+fmtG(e.bought)+' bought, '+fmtG(e.productionUsed)+' used for products made, '+fmtG(e.used)+' used in unproduced sales, '+fmtG(e.wastageUsed||0)+' wastage recorded, '+fmtG(e.recipeUsed)+' configured per product piece, '+money(e.cpg,2)+' per gram</div>'
+    +'<div class="small muted">'+fmtG(e.bought)+' bought, '+fmtG(e.productionUsed)+' used for products made, '+fmtG(e.used)+' used in unproduced sales, '+fmtG(e.wastageUsed||0)+' wastage recorded, '+fmtG(e.marketingUsed||0)+' used for Marketing, '+fmtG(e.recipeUsed)+' configured per product piece, '+money(e.cpg,2)+' per gram</div>'
     +'<div class="small muted spool-prods">'+(e.prods&&e.prods.length?'Products using it: '+e.prods.slice().sort(byName).slice(0,4).map(function(x){return esc(x.name)+' '+fmtG(x.grams)+' each';}).join(', ')+(e.prods.length>4?' and '+(e.prods.length-4)+' more':''):'Not used in any product yet')+'</div></div>';
 }
 function vStart(){
@@ -835,7 +849,22 @@ function vProducts(){
   }).join('');
   return '<div style="overflow-x:auto"><table><thead><tr><th>Product</th><th>Production Date</th><th class="num">Available</th><th class="hide-sm">Filament</th><th class="num hide-sm">Grams</th><th class="num">Cost</th><th class="num">Listed price</th><th class="num">Margin</th></tr></thead><tbody>'+body+'</tbody></table></div>';
 }
-function vSales(){
+
+function marketingPurposeLabel(p){return ({'R&D':'R&D','Personal Use':'Personal Use','Gifting':'Gifting','Marketing':'Marketing'})[p]||p||'—';}
+function vMarketing(){
+  var q=state.q.trim().toLowerCase();
+  var rows=state.marketing.slice().sort(function(a,b){return String(b.date||'').localeCompare(String(a.date||''))||String(b.createdAt||'').localeCompare(String(a.createdAt||''));})
+    .filter(function(m){return !q||[m.productName,m.purpose,m.recipient,m.project,m.notes].join(' ').toLowerCase().indexOf(q)>=0;});
+  var totalQty=rows.reduce(function(t,m){return t+Math.max(0,num(m.quantity));},0);
+  var totalCost=rows.reduce(function(t,m){return t+Math.max(0,num(m.totalCost));},0);
+  var cards='<div class="figures"><div class="fig"><span class="fig-l">Entries</span><strong class="fig-v">'+rows.length+'</strong></div><div class="fig"><span class="fig-l">Pieces used</span><strong class="fig-v">'+totalQty+'</strong></div><div class="fig"><span class="fig-l">Recorded cost</span><strong class="fig-v">'+money(totalCost,2)+'</strong></div></div>';
+  if(!rows.length)return cards+empty('No Marketing entries yet','Track R&D, personal-use, gifting and promotional products here. These records stay separate from Sales.','new-marketing','Add Marketing entry');
+  var body=rows.map(function(m){
+    return '<tr><td>'+esc(fmtDate(m.date))+'</td><td><strong>'+esc(m.productName||'Untitled product')+'</strong><div class="small muted">'+(m.productType==='existing'?'Existing product':'New product')+'</div></td><td>'+esc(marketingPurposeLabel(m.purpose))+'</td><td class="num">'+num(m.quantity)+'</td><td class="num">'+money(m.totalCost||0,2)+'</td><td>'+(m.recipient?esc(m.recipient):'—')+'</td><td><button class="btn danger" data-act="delete-marketing:'+esc(m.id)+'">Delete</button></td></tr>';
+  }).join('');
+  return cards+'<div style="overflow-x:auto"><table><thead><tr><th>Date</th><th>Product</th><th>Purpose</th><th class="num">Qty</th><th class="num">Cost</th><th>Recipient / project</th><th></th></tr></thead><tbody>'+body+'</tbody></table></div>';
+}
+\nfunction vSales(){
   if(!state.sales.length)return empty('No sales yet','Record what you sold, the price you sold it at and who bought it. Filament stock and profit update automatically.',state.products.length?'new-sale':(state.filaments.length?'new-product':'new-purchase'),state.products.length?'Record a sale':(state.filaments.length?'Add a product first':'Log filament first'));
   var q=state.q.trim().toLowerCase();
   var list=sortedSales(state.sales).filter(function(s){return !q||(custName(s)+' '+prodName(s)+' '+(s.notes||'')).toLowerCase().indexOf(q)>=0;});
@@ -1033,7 +1062,91 @@ function openPurchase(id){
 }
 
 /* ---------- forms: product ---------- */
-function openProduct(id){
+
+function openMarketing(){
+  var S=getStats(),products=state.products.slice().sort(byName),filaments=Array.from(S.values()).sort(byName),printers=state.printers.slice().sort(byName);
+  var html='<div class="dbody">'
+    +'<div class="grid2"><div class="field"><label for="m-date">Date</label><input id="m-date" name="date" type="date" value="'+today()+'"></div><div class="field"><label for="m-purpose">Purpose</label><select id="m-purpose" name="purpose"><option>R&D</option><option>Personal Use</option><option>Gifting</option><option>Marketing</option></select></div></div>'
+    +'<div class="field"><label for="m-type">Product type</label><select id="m-type" name="productType"><option value="existing">Existing product</option><option value="new">New product</option></select></div>'
+    +'<section id="m-existing" class="part"><div class="field"><label for="m-product">Select existing product</label><select id="m-product" name="productId"><option value="">Choose a product</option>'+products.map(function(p){return '<option value="'+esc(p.id)+'">'+esc(p.name)+' — '+productAvailableQty(p.id,null)+' available</option>';}).join('')+'</select><span class="small muted" id="m-available"></span></div><div class="field"><label for="m-existing-qty">Quantity to use</label><input id="m-existing-qty" name="existingQty" type="number" min="1" step="1" value="1"></div></section>'
+    +'<section id="m-new" class="part" style="display:none"><div class="field"><label for="m-name">New product name</label><input id="m-name" name="name" placeholder="Enter product name"></div>'
+    +'<div class="field"><label for="m-production-date">Production date</label><input id="m-production-date" name="productionDate" type="date" value="'+today()+'"></div>'
+    +'<div class="field"><label><input type="checkbox" name="addToProducts" id="m-add-to-products"> Add this product to Products list</label><span class="small muted">Save it as a reusable product recipe. Its Marketing quantity will not be counted as available stock.</span></div>'
+    +'<div class="field"><label for="m-category">Category (optional)</label><input id="m-category" name="category" placeholder="Toys, Home decor…"></div>'
+    +'<div class="field"><label for="m-description">Details (optional)</label><textarea id="m-description" name="description" placeholder="Product details"></textarea></div>'
+    +'<div class="field"><label for="m-price">Listed price (optional)</label><input id="m-price" name="price" type="number" min="0" step="any" placeholder="0"></div>'
+    +'<div class="grid2"><div class="field"><label for="m-qty">Quantity made</label><input id="m-qty" name="quantityMade" type="number" min="1" step="1" value="1"></div><div class="field"><label for="m-used-qty">Quantity used</label><input id="m-used-qty" name="quantityUsed" type="number" min="0" step="1" value="1"></div></div><div class="field"><label>Remaining quantity</label><div class="live" id="m-balance">0 pieces</div></div>'
+    +'<div class="part"><h3>Filament used per piece</h3><p class="hint">Add each filament and its grams per piece. Stock is checked before saving.</p><div id="m-lines" class="stack">'+marketingLineHtml(filaments,0)+'</div><button type="button" class="btn" data-marketing-add-line>Add another filament</button></div>'
+    +'<div class="part"><h3>Print time and power</h3><div class="field"><label for="m-printer">Printer</label><select id="m-printer" name="printer"><option value="">No printer</option>'+printers.map(function(p){return '<option value="'+esc(p.id)+'">'+esc(p.name)+' ('+num(p.watts)+' W)</option>';}).join('')+'</select></div><div class="grid2"><div class="field"><label for="m-hours">Print time, hours</label><input id="m-hours" name="hours" type="number" min="0" step="1" value="0"></div><div class="field"><label for="m-mins">Minutes</label><input id="m-mins" name="mins" type="number" min="0" max="59" step="1" value="0"></div></div><div class="field"><label for="m-other">Other cost per piece (optional)</label><input id="m-other" name="other" type="number" min="0" step="any" value="0"></div></div></section>'
+    +'<div class="field"><label for="m-recipient">Recipient (optional)</label><input id="m-recipient" name="recipient" placeholder="Person / client / team"></div><div class="field"><label for="m-project">Project / campaign (optional)</label><input id="m-project" name="project" placeholder="Project or campaign name"></div><div class="field"><label for="m-notes">Notes (optional)</label><textarea id="m-notes" name="notes" placeholder="Reason or additional details"></textarea></div></div>'
+    +foot('<div class="live" id="m-live"></div>',false,'Save Marketing entry');
+  var form=openDrawer('Add Marketing entry',html);
+  function linesRead(){return $('.marketing-line',form).map(function(r){var sel=r.querySelector('select'),e=S.get(sel.value);return {key:sel.value,name:e?e.name:(sel.options[sel.selectedIndex]?sel.options[sel.selectedIndex].text:''),grams:num(r.querySelector('[name="grams"]').value)};}).filter(function(l){return l.key&&l.grams>0;});}
+  function update(){
+    var isNew=ctl(form,'productType').value==='new';
+    $('#m-existing',form).style.display=isNew?'none':'';
+    $('#m-new',form).style.display=isNew?'':'none';
+    var pid=ctl(form,'productId').value,prod=products.find(function(p){return p.id===pid;});
+    var available=prod?productAvailableQty(pid,null):0,avail=$('#m-available',form);
+    if(avail)avail.textContent=prod?'Available quantity: '+available+' piece(s)':'Select a product to see available quantity.';
+    var cost={fil:0,elec:0,other:0,total:0};
+    if(isNew){
+      var l=linesRead(),qty=Math.max(1,Math.floor(num(ctl(form,'quantityMade').value)||1)),hrs=Math.max(0,num(ctl(form,'hours').value))+Math.max(0,Math.min(59,num(ctl(form,'mins').value)))/60;
+      var usedQty=Math.max(0,Math.floor(num(ctl(form,'quantityUsed').value)||0)),balance=qty-usedQty,balanceEl=$('#m-balance',form);if(balanceEl)balanceEl.textContent=balance+' piece(s) remaining';
+      cost=productCost({lines:l,printerId:ctl(form,'printer').value,printHours:hrs,otherCost:ctl(form,'other').value},S);
+      cost.total*=qty;cost.fil*=qty;cost.elec*=qty;cost.other*=qty;
+    }else if(prod){cost=productCost(prod,S);var qty2=Math.max(1,Math.floor(num(ctl(form,'existingQty').value)||1));cost.total*=qty2;cost.fil*=qty2;cost.elec*=qty2;cost.other*=qty2;}
+    $('#m-live',form).innerHTML='<span><span class="muted">Filament</span> <strong>'+money(cost.fil,2)+'</strong></span><span><span class="muted">Electricity</span> <strong>'+money(cost.elec,2)+'</strong></span><span><span class="muted">Total cost</span> <strong>'+money(cost.total,2)+'</strong></span>';
+  }
+  function addLine(){
+    var wrap=document.createElement('div');
+    wrap.innerHTML=marketingLineHtml(filaments,$('.marketing-line',form).length);
+    $('#m-lines',form).appendChild(wrap.firstElementChild);update();
+  }
+  form.addEventListener('input',update);form.addEventListener('change',update);
+  form.addEventListener('click',function(e){
+    if(e.target.closest('[data-marketing-add-line]')){addLine();return;}
+    var rm=e.target.closest('[data-marketing-remove-line]');
+    if(rm){rm.closest('.marketing-line').remove();update();}
+  });
+  update();
+  wireSubmit(form,function(){
+    var isNew=ctl(form,'productType').value==='new',made=isNew?Math.max(1,Math.floor(num(ctl(form,'quantityMade').value))):0,usedQty=isNew?Math.floor(num(ctl(form,'quantityUsed').value)):Math.max(1,Math.floor(num(ctl(form,'existingQty').value))),qty=usedQty;
+    if(!isFinite(qty)||qty<0||(isNew?(made<1||qty>made):(qty<1)))return fail(form,isNew?'Quantity used must be between 0 and quantity made.':'Enter a valid quantity.');
+    var purpose=ctl(form,'purpose').value,date=ctl(form,'date').value||today(),recipient=ctl(form,'recipient').value.trim(),project=ctl(form,'project').value.trim(),notes=ctl(form,'notes').value.trim();
+    var productId='',productName='',used=[],cost={fil:0,elec:0,other:0,total:0},consumeFilament=false,productData=null;
+    if(!isNew){
+      productId=ctl(form,'productId').value;var existing=products.find(function(p){return p.id===productId;});
+      if(!existing)return fail(form,'Choose an existing product.');
+      var available=productAvailableQty(productId,null);
+      if(qty>available)return fail(form,'Only '+available+' piece(s) are available for this product.');
+      productName=existing.name;cost=productCost(existing,S);cost={fil:cost.fil*qty,elec:cost.elec*qty,other:cost.other*qty,total:cost.total*qty};
+    }else{
+      productName=ctl(form,'name').value.trim();if(!productName)return fail(form,'Enter the new product name.');
+      used=linesRead();if(!used.length)return fail(form,'Add at least one filament and enter grams used per piece.');
+      var required=new Map();used.forEach(function(l){required.set(l.key,(required.get(l.key)||0)+l.grams*made);});
+      var shortage='';required.forEach(function(grams,key){var entry=S.get(key),left=entry?entry.left:0;if(grams>left+0.000001&&!shortage)shortage='Not enough '+(entry?entry.name:key)+': '+fmtG(grams)+' required, but '+fmtG(left)+' available.';});
+      if(shortage)return fail(form,shortage);
+      var hrs=Math.max(0,num(ctl(form,'hours').value))+Math.max(0,Math.min(59,num(ctl(form,'mins').value)))/60,pid=ctl(form,'printer').value,pr=printers.find(function(x){return x.id===pid;});
+      cost=productCost({lines:used,printerId:pid,printHours:hrs,otherCost:ctl(form,'other').value},S);
+      cost={fil:cost.fil*made,elec:cost.elec*made,other:cost.other*made,total:cost.total*made};
+      consumeFilament=true;
+      if(ctl(form,'addToProducts').checked){
+        productId=backend.newId('products');
+        productData={name:productName,category:ctl(form,'category').value.trim(),description:ctl(form,'description').value.trim(),productionDate:ctl(form,'productionDate').value||date,printHours:hrs,printerId:pid,printerName:pr?pr.name:'',price:ctl(form,'price').value.trim()===''?null:num(ctl(form,'price').value),gstRate:null,priceMode:'exclusive',otherCost:ctl(form,'other').value.trim()===''?0:num(ctl(form,'other').value),quantityMade:made,lines:used,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};
+      }
+    }
+    var recordId=backend.newId('marketing');
+    var record={date:date,purpose:purpose,productType:isNew?'new':'existing',productId:productId,productName:productName,quantity:qty,lines:used,consumeFilament:(isNew&&!productId),filamentQuantity:isNew?made:0,quantityMade:isNew?made:qty,printerId:isNew?ctl(form,'printer').value:(products.find(function(p){return p.id===productId;})||{}).printerId||'',printHours:isNew?(Math.max(0,num(ctl(form,'hours').value))+Math.max(0,Math.min(59,num(ctl(form,'mins').value)))/60):0,otherCost:isNew?num(ctl(form,'other').value):0,filamentCost:cost.fil,electricityCost:cost.elec,totalCost:cost.total,recipient:recipient,project:project,notes:notes,createdAt:new Date().toISOString()};
+    var saveProduct=productData?save('products',productId,productData):Promise.resolve(true);
+    return saveProduct.then(function(ok){if(!ok)return false;return save('marketing',recordId,record);}).then(function(ok){if(ok)toast('Marketing entry saved');return ok;});
+  });
+}
+function marketingLineHtml(filaments,index){
+  var options='<option value="">Select filament</option>'+filaments.map(function(e){return '<option value="'+esc(e.key)+'">'+esc(e.name)+' ('+money(e.cpg,2)+'/g)</option>';}).join('');
+  return '<div class="line marketing-line"><div class="field" style="flex:1;min-width:180px"><select name="filament-'+index+'" aria-label="Filament">'+options+'</select></div><input name="grams" type="number" min="0" step="any" placeholder="Grams per piece" aria-label="Grams per piece"><button type="button" class="iconbtn" data-marketing-remove-line aria-label="Remove filament">'+ICONS.x+'</button></div>';
+}
+\nfunction openProduct(id){
   var S=getStats(),p=id?state.products.find(function(x){return x.id===id;}):null;
   if(id&&!p)return;
   var opts=Array.from(S.values()).sort(byName);
@@ -1162,8 +1275,9 @@ function openProduct(id){
     var statsNow=getStats();
     var soldQty=p?productSoldQty(p.id,null):0;
     var existingMade=p?Math.max(0,num(p.quantityMade)):0;
-    var existingConsumedQty=Math.max(existingMade,soldQty);
-    var stockError=productProductionStockError(used,madeQty,statsNow,p?(p.lines||[]):[],existingConsumedQty,soldQty);
+    var marketedQty=p?productMarketingQty(p.id,null):0;
+    var existingConsumedQty=Math.max(existingMade,soldQty+marketedQty);
+    var stockError=productProductionStockError(used,madeQty,statsNow,p?(p.lines||[]):[],existingConsumedQty,soldQty+marketedQty);
     if(stockError)return fail(form,stockError);
     /* Unknown print time, electricity and selling price are allowed; unknown costs must not be inferred as real zeroes. */
     var pr=state.printers.find(function(x){return x.id===pid;});
@@ -1529,9 +1643,10 @@ function openSettings(){
         file.text().then(function(raw){
           var data;
           try{data=JSON.parse(raw);}catch(err){toast('Invalid JSON file. No data was changed.',true);return;}
-          var groups=['filaments','printers','products','customers','sales','wastage','transfers','supplies'];
+          var groups=['filaments','printers','products','customers','sales','wastage','transfers','supplies','marketing'];
           var errors=[],warnings=[],counts={};
           if(!data||typeof data!=='object'||Array.isArray(data)){toast('Backup must contain a JSON object. No data was changed.',true);return;}
+          if(!Array.isArray(data.marketing))data.marketing=[]; // Backward-compatible with older backups.
           if(data.schemaVersion!==2)warnings.push('Schema version is '+esc(data.schemaVersion==null?'missing':data.schemaVersion)+'; this CRM currently exports version 2.');
           groups.forEach(function(k){
             if(!Array.isArray(data[k]))errors.push(k+' must be an array.');
@@ -1563,7 +1678,7 @@ function openSettings(){
     var b=e.target.closest('[data-export]');
     if(b){
       if(b.dataset.export==='csv')offerFile('vforge-3d-sales.csv',salesCsv());
-      else offerFile('vforge-3d-backup.json',JSON.stringify({exportedAt:new Date().toISOString(),schemaVersion:2,filaments:state.filaments,printers:state.printers,products:state.products,customers:state.customers,sales:state.sales,wastage:state.wastage,transfers:state.transfers,settings:state.settings},null,2));
+      else offerFile('vforge-3d-backup.json',JSON.stringify({exportedAt:new Date().toISOString(),schemaVersion:2,filaments:state.filaments,printers:state.printers,products:state.products,customers:state.customers,sales:state.sales,wastage:state.wastage,transfers:state.transfers,supplies:state.supplies,marketing:state.marketing,settings:state.settings},null,2));
       return;
     }
     var c=e.target.closest('[data-cloud-action]');
@@ -1598,6 +1713,7 @@ document.addEventListener('click',function(e){
   if(t&&!drawerOpen&&!t.disabled){
     var a=t.dataset.act;
     if(a==='new-purchase')openPurchase();
+    else if(a==='new-marketing')openMarketing();
     else if(a==='new-product')openProduct();
     else if(a==='new-printer')openPrinter();
     else if(a==='new-sale')openSale();
@@ -1610,6 +1726,7 @@ document.addEventListener('click',function(e){
     else if(a.indexOf('delete-supply:')===0){var sid=a.slice(14),sup=state.supplies.find(function(x){return x.id===sid;});if(sup&&confirm('Delete '+sup.name+' and its purchase/usage history?'))remove('supplies',sid).then(function(ok){if(ok)toast('Supply item deleted');});}
     else if(a.indexOf('delete-wastage:')===0){var wid=a.slice(15);if(confirm('Delete this wastage record?'))remove('wastage',wid).then(function(ok){if(ok)toast('Wastage record deleted');});}
     else if(a.indexOf('delete-transfer:')===0){var tid=a.slice(16);if(confirm('Delete this branch transfer?'))remove('transfers',tid).then(function(ok){if(ok)toast('Transfer deleted');});}
+    else if(a.indexOf('delete-marketing:')===0){var mid=a.slice(16);if(confirm('Delete this Marketing entry? Product/filament availability will be recalculated.'))remove('marketing',mid).then(function(ok){if(ok)toast('Marketing entry deleted');});}
     else if(a==='settings')openSettings();
     else if(a==='sync-sheets')syncGoogleSheets();
     else if(a==='test-sheets')testGoogleSheets();
