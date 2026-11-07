@@ -591,7 +591,7 @@ function getStats(){
   // apply the same production-vs-sale inventory rule to each line item.
   var soldByProduct=new Map(),marketedByProduct=new Map();
   state.sales.forEach(function(s){saleLines(s).forEach(function(l){var pid=l.productId||s.productId;if(!pid)return;soldByProduct.set(pid,(soldByProduct.get(pid)||0)+Math.max(0,num(l.qty)));});});
-  state.marketing.forEach(function(m){if(m.productId)marketedByProduct.set(m.productId,(marketedByProduct.get(m.productId)||0)+Math.max(0,num(m.quantity)));});
+  (state.marketing||[]).forEach(function(m){if(m.productId)marketedByProduct.set(m.productId,(marketedByProduct.get(m.productId)||0)+Math.max(0,num(m.quantity)));});
   state.sales.forEach(function(s){saleLines(s).forEach(function(l){
     var pid=l.productId||s.productId,prod=state.products.find(function(pr){return pr.id===pid;});
     if(!prod){(l.usage||s.usage||[]).forEach(function(u){var e=map.get(u.key);if(e)e.used+=num(u.grams)*num(l.qty||s.qty);});return;}
@@ -599,7 +599,7 @@ function getStats(){
   });});
   state.products.forEach(function(pr){var madeQty=Math.max(0,num(pr.quantityMade)),soldQty=soldByProduct.get(pr.id)||0,marketedQty=marketedByProduct.get(pr.id)||0,extraQty=Math.max(0,soldQty+marketedQty-madeQty);if(extraQty>0)(pr.lines||[]).forEach(function(l){var e=map.get(l.key);if(e)e.saleExtraUsed+=num(l.grams)*extraQty;});});
 
-  state.marketing.forEach(function(m){
+  (state.marketing||[]).forEach(function(m){
     if(!m.consumeFilament)return;
     (m.lines||[]).forEach(function(l){var e=map.get(l.key);if(e)e.marketingUsed=(e.marketingUsed||0)+Math.max(0,num(l.grams))*Math.max(0,num(m.quantity));});
   });
@@ -666,7 +666,7 @@ function productSoldQty(productId,excludeSaleId){
   },0);
 }
 function productMarketingQty(productId,excludeMarketingId){
-  return state.marketing.reduce(function(total,m){
+  return (state.marketing||[]).reduce(function(total,m){
     if(excludeMarketingId&&m.id===excludeMarketingId)return total;
     return total+((m.productId===productId)?Math.max(0,num(m.quantity)):0);
   },0);
@@ -674,7 +674,8 @@ function productMarketingQty(productId,excludeMarketingId){
 function productAvailableQty(productId,excludeSaleId){
   var prod=state.products.find(function(p){return p.id===productId;});
   if(!prod)return 0;
-  return Math.max(0,Math.max(0,num(prod.quantityMade))-productSoldQty(productId,excludeSaleId)-productMarketingQty(productId,null));
+  var marketed=(state.marketing||[]).reduce(function(t,m){return t+(m.productId===productId?Math.max(0,num(m.quantity)):0);},0);
+  return Math.max(0,Math.max(0,num(prod.quantityMade))-productSoldQty(productId,excludeSaleId)-marketed);
 }
 function productExtraQtyForSale(productId,qty,excludeSaleId){
   return Math.max(0,Math.max(0,num(qty))-productAvailableQty(productId,excludeSaleId));
@@ -683,7 +684,7 @@ function productSavedExtraQtyForSale(productId,saleId){
   var prod=state.products.find(function(p){return p.id===productId;});
   if(!prod||!saleId)return 0;
   var made=Math.max(0,num(prod.quantityMade));
-  var marketedQty=productMarketingQty(productId,null);
+  var marketedQty=(state.marketing||[]).reduce(function(t,m){return t+(m.productId===productId?Math.max(0,num(m.quantity)):0);},0);
   var allExtra=Math.max(0,productSoldQty(productId,null)+marketedQty-made);
   var withoutCurrentExtra=Math.max(0,productSoldQty(productId,saleId)+marketedQty-made);
   return Math.max(0,allExtra-withoutCurrentExtra);
@@ -1641,7 +1642,8 @@ function openSettings(){
         file.text().then(function(raw){
           var data;
           try{data=JSON.parse(raw);}catch(err){toast('Invalid JSON file. No data was changed.',true);return;}
-          var groups=['filaments','printers','products','customers','sales','wastage','transfers','supplies'];
+          var groups=['filaments','printers','products','customers','sales','wastage','transfers','supplies','marketing'];
+          if(!Array.isArray(data.marketing))data.marketing=[]; // Backward-compatible with older backups.
           var errors=[],warnings=[],counts={};
           if(!data||typeof data!=='object'||Array.isArray(data)){toast('Backup must contain a JSON object. No data was changed.',true);return;}
           if(data.schemaVersion!==2)warnings.push('Schema version is '+esc(data.schemaVersion==null?'missing':data.schemaVersion)+'; this CRM currently exports version 2.');
@@ -1675,7 +1677,7 @@ function openSettings(){
     var b=e.target.closest('[data-export]');
     if(b){
       if(b.dataset.export==='csv')offerFile('vforge-3d-sales.csv',salesCsv());
-      else offerFile('vforge-3d-backup.json',JSON.stringify({exportedAt:new Date().toISOString(),schemaVersion:2,filaments:state.filaments,printers:state.printers,products:state.products,customers:state.customers,sales:state.sales,wastage:state.wastage,transfers:state.transfers,settings:state.settings},null,2));
+      else offerFile('vforge-3d-backup.json',JSON.stringify({exportedAt:new Date().toISOString(),schemaVersion:2,filaments:state.filaments,printers:state.printers,products:state.products,customers:state.customers,sales:state.sales,wastage:state.wastage,transfers:state.transfers,supplies:state.supplies,marketing:state.marketing,settings:state.settings},null,2));
       return;
     }
     var c=e.target.closest('[data-cloud-action]');
