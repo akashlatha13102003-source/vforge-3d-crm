@@ -1081,7 +1081,7 @@ function openMarketing(){
     +'<div class="field"><label for="m-recipient">Recipient (optional)</label><input id="m-recipient" name="recipient" placeholder="Person / client / team"></div><div class="field"><label for="m-project">Project / campaign (optional)</label><input id="m-project" name="project" placeholder="Project or campaign name"></div><div class="field"><label for="m-notes">Notes (optional)</label><textarea id="m-notes" name="notes" placeholder="Reason or additional details"></textarea></div></div>'
     +foot('<div class="live" id="m-live"></div>',false,'Save Marketing entry');
   var form=openDrawer('Add Marketing entry',html);
-  function linesRead(){return $('.marketing-line',form).map(function(r){var sel=r.querySelector('select'),e=S.get(sel.value);return {key:sel.value,name:e?e.name:(sel.options[sel.selectedIndex]?sel.options[sel.selectedIndex].text:''),grams:num(r.querySelector('[name="grams"]').value)};}).filter(function(l){return l.key&&l.grams>0;});}
+  function linesRead(){return $$('.marketing-line',form).map(function(r){var sel=r.querySelector('select'),e=S.get(sel.value);return {key:sel.value,name:e?e.name:(sel.options[sel.selectedIndex]?sel.options[sel.selectedIndex].text:''),grams:num(r.querySelector('[name="grams"]').value)};}).filter(function(l){return l.key&&l.grams>0;});}
   function update(){
     var isNew=ctl(form,'productType').value==='new';
     $('#m-existing',form).style.display=isNew?'none':'';
