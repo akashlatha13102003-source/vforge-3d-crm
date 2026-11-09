@@ -17,7 +17,7 @@ function extractFunction(name) {
 }
 
 const declarations = [
-  'supplyTotals', 'productGst', 'saleLines', 'productSoldQty', 'productAvailableQty', 'productProductionStockError',
+  'supplyTotals', 'productGst', 'saleLines', 'saleQty', 'productSoldQty', 'productAvailableQty', 'productProductionStockError',
   'productExtraQtyForSale', 'productSavedExtraQtyForSale', 'saleRev', 'saleTax', 'saleTaxable',
   'saleCost', 'saleProfit', 'getStats', 'powerOf', 'productCost', 'productProductionStockError', 'fmtG', 'wastageExceedsStock'
 ].map(extractFunction).join('\n');
@@ -74,6 +74,15 @@ test('editing a product gives back its existing recipe consumption before valida
   const oldRecipe = [{ key: 'green', name: 'Anycubic PLA Green', grams: 145 }];
   assert.equal(context.productProductionStockError(oldRecipe, 4, stats, oldRecipe, 2, 0), '');
   assert.match(context.productProductionStockError(oldRecipe, 7, stats, oldRecipe, 2, 0), /1,?015 g required.*600 g available/i);
+});
+
+test('multi-product sale quantity is the sum of all invoice line quantities', () => {
+  const sale = { qty: 1, lineItems: [
+    { productId: 'batman', productName: 'Batman', qty: 1 },
+    { productId: 'spiderman', productName: 'Spiderman pose 1', qty: 1 }
+  ] };
+  assert.equal(context.saleQty(sale), 2);
+  assert.equal(context.saleQty({ productId: 'legacy', qty: 3 }), 3);
 });
 
 test('legacy sale with zero saved unit cost falls back to current product recipe cost', () => {

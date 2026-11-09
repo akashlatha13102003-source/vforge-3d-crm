@@ -659,6 +659,7 @@ function saleLines(s){
   if(Array.isArray(s.lineItems)&&s.lineItems.length)return s.lineItems;
   return [{productId:s.productId,productName:s.productName,qty:num(s.qty),unitPrice:num(s.unitPrice),unitCost:num(s.unitCost),usage:s.usage||[],printerId:s.printerId||'',hours:num(s.hours),gstRate:s.gstRate==null?null:s.gstRate,priceMode:s.priceMode||'exclusive',taxableUnit:s.taxableUnit,gstUnit:s.gstUnit,finalUnit:s.finalUnit}];
 }
+function saleQty(s){return saleLines(s).reduce(function(total,l){return total+Math.max(0,num(l.qty));},0);}
 function productSoldQty(productId,excludeSaleId){
   return state.sales.reduce(function(total,s){
     if(excludeSaleId&&s.id===excludeSaleId)return total;
@@ -807,7 +808,7 @@ function vOverview(){
   var recent=sortedSales(list).slice(0,6);
   var recentHtml=recent.length?'<ul class="list">'+recent.map(function(s){
     var pr=saleProfit(s);
-    return '<li class="row"><div><button class="linkish" data-open="sale:'+esc(s.id)+'">'+esc(custName(s))+'</button><span class="small muted">'+esc(prodName(s))+' \u00d7 '+num(s.qty)+', '+esc(fmtDate(s.date))+'</span></div><div class="row-r"><strong>'+money(saleRev(s))+'</strong><span class="small '+(pr<0?'neg':'muted')+'">profit '+signed(pr)+'</span></div></li>';
+    return '<li class="row"><div><button class="linkish" data-open="sale:'+esc(s.id)+'">'+esc(custName(s))+'</button><span class="small muted">'+esc(prodName(s))+' \u00d7 '+saleQty(s)+', '+esc(fmtDate(s.date))+'</span></div><div class="row-r"><strong>'+money(saleRev(s))+'</strong><span class="small '+(pr<0?'neg':'muted')+'">profit '+signed(pr)+'</span></div></li>';
   }).join('')+'</ul>':'<p class="muted">No sales in this period.</p>';
   var topHtml=top.length?'<ul class="list">'+top.map(function(t){
     return '<li class="row"><div><strong>'+esc(t.name)+'</strong><span class="small muted">'+t.units+(t.units===1?' piece sold':' pieces sold')+'</span></div><div class="row-r"><strong class="'+(t.profit<0?'neg':'')+'">'+signed(t.profit)+'</strong><span class="small muted">profit</span></div></li>';
@@ -873,7 +874,7 @@ function vSales(){
   if(!list.length)return '<p class="muted">No sales match \u201c'+esc(state.q)+'\u201d.</p>';
   var body=list.map(function(s){
     var pr=saleProfit(s);
-    return '<tr class="click" data-open="sale:'+esc(s.id)+'"><td class="hide-sm">'+esc(fmtDate(s.date))+'</td><td><button class="linkish" data-open="sale:'+esc(s.id)+'">'+esc(custName(s))+'</button><div class="small muted only-sm">'+esc(prodName(s))+' \u00d7 '+num(s.qty)+', '+esc(fmtDate(s.date))+'</div></td><td class="hide-sm">'+esc(prodName(s))+'</td><td class="num hide-sm">'+num(s.qty)+'</td><td class="num">'+money(saleRev(s))+'</td><td class="num hide-sm"><span class="'+(pr<0?'neg':'')+'">'+signed(pr)+'</span></td><td><span class="tag '+(s.status==='pending'?'pending':'paid')+'">'+(s.status==='pending'?'Pending':'Paid')+'</span></td></tr>';
+    return '<tr class="click" data-open="sale:'+esc(s.id)+'"><td class="hide-sm">'+esc(fmtDate(s.date))+'</td><td><button class="linkish" data-open="sale:'+esc(s.id)+'">'+esc(custName(s))+'</button><div class="small muted only-sm">'+esc(prodName(s))+' \u00d7 '+saleQty(s)+', '+esc(fmtDate(s.date))+'</div></td><td class="hide-sm">'+esc(prodName(s))+'</td><td class="num hide-sm">'+saleQty(s)+'</td><td class="num">'+money(saleRev(s))+'</td><td class="num hide-sm"><span class="'+(pr<0?'neg':'')+'">'+signed(pr)+'</span></td><td><span class="tag '+(s.status==='pending'?'pending':'paid')+'">'+(s.status==='pending'?'Pending':'Paid')+'</span></td></tr>';
   }).join('');
   return '<div style="overflow-x:auto"><table><thead><tr><th class="hide-sm">Date</th><th>Customer</th><th class="hide-sm">Product</th><th class="num hide-sm">Qty</th><th class="num">Total</th><th class="num hide-sm">Profit</th><th>Payment</th></tr></thead><tbody>'+body+'</tbody></table></div>';
 }
