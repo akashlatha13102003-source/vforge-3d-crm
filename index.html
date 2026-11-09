@@ -1400,7 +1400,7 @@ function openCustomer(id){
   if(c){
     var orders=sortedSales(state.sales.filter(function(s){return s.customerId===c.id;}));
     hist='<div class="part"><h3>Orders</h3>'+(orders.length?'<ul class="list">'+orders.map(function(s){
-      return '<li class="row"><div><strong>'+esc(prodName(s))+' \u00d7 '+num(s.qty)+'</strong><span class="small muted">'+esc(fmtDate(s.date))+', '+(s.status==='pending'?'payment pending':'paid')+'</span></div><div class="row-r"><strong>'+money(saleRev(s))+'</strong></div></li>';
+      return '<li class="row"><div><strong>'+esc(prodName(s))+' \u00d7 '+saleQty(s)+'</strong><span class="small muted">'+esc(fmtDate(s.date))+', '+(s.status==='pending'?'payment pending':'paid')+'</span></div><div class="row-r"><strong>'+money(saleRev(s))+'</strong></div></li>';
     }).join('')+'</ul>':'<p class="muted" style="margin:0">No orders yet.</p>')+'</div>';
   }
   var html='<div class="dbody"><div class="part">'
