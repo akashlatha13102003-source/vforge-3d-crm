@@ -1560,48 +1560,91 @@ function syncGoogleSheets(silent){
     if(!silent)toast('Add your Google Sheets Web App URL in Settings first.',true);
     return Promise.reject(new Error('Google Sheets URL is not configured'));
   }
-  if(!silent)toast('Sending report to Google Sheets…');
+  if(!silent)toast('Sending reports and waiting for Google Sheets verification…');
 
-  // IMPORTANT: Do not use form.submit() or iframe navigation here.
-  // In the ChatGPT/local HTML environment that can trigger an
-  // "External site" confirmation popup. sendBeacon sends the POST in the
-  // background without navigating the current page.
-  var payload=sheetsPayload();
+  // Every request gets a unique ID. Apps Script stores its final receipt and
+  // the browser retrieves it with JSONP, avoiding opaque sendBeacon responses.
+  var requestId='vforge_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,10);
+  var callbackName='vforgeSheetsReceipt_'+requestId.replace(/[^A-Za-z0-9_$]/g,'_');
+  var payloadObject=JSON.parse(sheetsPayload());
+  payloadObject.requestId=requestId;
   var body=new URLSearchParams();
-  body.append('payload',payload);
+  body.append('payload',JSON.stringify(payloadObject));
 
   return new Promise(function(resolve,reject){
+    var finished=false,started=Date.now(),pollTimer=null,timeoutTimer=null;
+    function cleanup(){
+      if(pollTimer)clearTimeout(pollTimer);
+      if(timeoutTimer)clearTimeout(timeoutTimer);
+      try{delete window[callbackName];}catch(ignore){window[callbackName]=undefined;}
+    }
+    function finish(error,receipt){
+      if(finished)return;
+      finished=true;cleanup();
+      if(error){
+        if(!silent)toast('Google Sheets sync failed: '+error,true);
+        reject(new Error(error));
+        return;
+      }
+      var localTime=new Date(receipt.syncedAt).toLocaleString('en-IN',{timeZone:'Asia/Kolkata'});
+      if(!silent)toast('✓ Google Sheets verified at '+localTime+
+        ' · Products '+receipt.productRows+
+        ' · Sales '+receipt.salesRows+
+        ' · Transfers '+receipt.branchTransferRows,false);
+      resolve(receipt);
+    }
+    function pollReceipt(){
+      if(finished)return;
+      var script=document.createElement('script');
+      var separator=url.indexOf('?')>=0?'&':'?';
+      script.src=url+separator+'receipt='+encodeURIComponent(requestId)+
+        '&callback='+encodeURIComponent(callbackName)+'&_='+Date.now();
+      script.async=true;
+      script.onerror=function(){
+        script.remove();
+        if(Date.now()-started>60000)finish('Could not retrieve the server receipt. Check the Apps Script deployment and Sync Log.');
+        else pollTimer=setTimeout(pollReceipt,2000);
+      };
+      document.head.appendChild(script);
+      // JSONP callback removes the script; this fallback handles a response
+      // that loaded but did not invoke the expected callback.
+      setTimeout(function(){try{script.remove();}catch(ignore){}},5000);
+    }
+    window[callbackName]=function(receipt){
+      if(!receipt||receipt.pending){
+        pollTimer=setTimeout(pollReceipt,2000);
+        return;
+      }
+      if(receipt.requestId&&receipt.requestId!==requestId){
+        finish('Received a receipt for a different sync request.');
+        return;
+      }
+      if(receipt.ok===true&&receipt.verified===true){
+        finish(null,receipt);
+      }else{
+        finish(receipt.error||'Google Apps Script did not verify the report write.');
+      }
+    };
+    timeoutTimer=setTimeout(function(){
+      finish('Timed out after 60 seconds waiting for Google Sheets. The request may still be processing; check Sync Log before retrying.');
+    },60000);
+
     var sent=false;
     try{
-      if(navigator.sendBeacon){
-        sent=navigator.sendBeacon(url,body);
-      }
+      if(navigator.sendBeacon)sent=navigator.sendBeacon(url,body);
     }catch(err){sent=false;}
-
-    // Fallback for browsers that reject sendBeacon. This request also does
-    // not navigate the page. Apps Script receives it as a POST parameter.
     if(!sent){
       try{
-        fetch(url,{
-          method:'POST',
-          mode:'no-cors',
-          body:body,
-          keepalive:true,
-          credentials:'omit'
-        });
+        fetch(url,{method:'POST',mode:'no-cors',body:body,keepalive:true,credentials:'omit'});
         sent=true;
       }catch(err){sent=false;}
     }
-
     if(!sent){
-      if(!silent)toast('Could not send the Google Sheets report.',true);
-      reject(new Error('Google Sheets request could not be queued'));
+      finish('The browser could not queue the Google Sheets request.');
       return;
     }
-
-    // Browser transport is opaque (sendBeacon/no-cors), so do not label this as a confirmed sync.
-    if(!silent)toast('Sync request sent. Check the Google Sheets report tabs to confirm the latest data.',false);
-    resolve({queued:true,confirmed:false});
+    // Start polling after the POST is queued; the server receipt is authoritative.
+    pollTimer=setTimeout(pollReceipt,1500);
   });
 }
 
