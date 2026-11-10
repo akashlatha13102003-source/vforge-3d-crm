@@ -21,7 +21,23 @@ var VFORGE_REPORTS = [
   { name: 'Consumables Report', key: 'consumables' }
 ];
 
-function doGet() {
+function doGet(e) {
+  // JSONP receipt polling lets the CRM confirm a cross-origin POST without
+  // relying on opaque sendBeacon/no-cors responses.
+  var params = e && e.parameter ? e.parameter : {};
+  if (params.receipt) {
+    var receipt = readReceipt_(params.receipt);
+    var callback = String(params.callback || '');
+    if (!/^[A-Za-z_$][0-9A-Za-z_$]*$/.test(callback)) {
+      return json_({ ok: false, error: 'Invalid receipt callback name' });
+    }
+    var body = callback + '(' + JSON.stringify(receipt || {
+      ok: false, pending: true, requestId: params.receipt
+    }) + ');';
+    return ContentService.createTextOutput(body)
+      .setMimeType(ContentService.MimeType.JAVASCRIPT);
+  }
+
   try {
     var ss = SpreadsheetApp.openById(VFORGE_SPREADSHEET_ID);
     return json_({
@@ -99,6 +115,7 @@ function doPost(e) {
 
     var receipt = {
       ok: true,
+      requestId: data.requestId || '',
       verified: true,
       syncedAt: new Date().toISOString(),
       crmTimestamp: data.syncedAt || '',
@@ -115,6 +132,7 @@ function doPost(e) {
 
     writeSyncLog_(ss, data, receipt, '');
     SpreadsheetApp.flush();
+    storeReceipt_(data.requestId, receipt);
 
     VFORGE_REPORTS.forEach(function(report) {
       protectReportSheet_(ss, report.name);
@@ -131,14 +149,19 @@ function doPost(e) {
 
     // Record failures in the target spreadsheet too. This prevents a failed
     // sync from disappearing simply because Apps Script reports "Completed".
+    var failureReceipt = {
+      ok: false,
+      verified: false,
+      requestId: data && data.requestId || '',
+      syncedAt: new Date().toISOString(),
+      error: message,
+      spreadsheetId: ss ? ss.getId() : VFORGE_SPREADSHEET_ID
+    };
+    storeReceipt_(data && data.requestId, failureReceipt);
+
     try {
       if (!ss) ss = SpreadsheetApp.openById(VFORGE_SPREADSHEET_ID);
-      writeSyncLog_(ss, data || {}, {
-        ok: false,
-        verified: false,
-        syncedAt: new Date().toISOString(),
-        spreadsheetId: ss.getId()
-      }, message);
+      writeSyncLog_(ss, data || {}, failureReceipt, message);
       SpreadsheetApp.flush();
       protectReportSheet_(ss, 'Sync Log');
     } catch (logErr) {
@@ -158,6 +181,29 @@ function doPost(e) {
       try { lock.releaseLock(); } catch (ignore) {}
     }
   }
+}
+
+
+function storeReceipt_(requestId, receipt) {
+  if (!requestId) return;
+  var props = PropertiesService.getScriptProperties();
+  props.setProperty('VFORGE_RECEIPT_' + requestId, JSON.stringify(receipt));
+  // Keep receipt storage bounded: retain the latest 100 request IDs.
+  var keys = JSON.parse(props.getProperty('VFORGE_RECEIPT_KEYS') || '[]');
+  keys = keys.filter(function(key) { return key !== requestId; });
+  keys.push(requestId);
+  while (keys.length > 100) {
+    var old = keys.shift();
+    props.deleteProperty('VFORGE_RECEIPT_' + old);
+  }
+  props.setProperty('VFORGE_RECEIPT_KEYS', JSON.stringify(keys));
+}
+
+function readReceipt_(requestId) {
+  var raw = PropertiesService.getScriptProperties()
+    .getProperty('VFORGE_RECEIPT_' + requestId);
+  if (!raw) return null;
+  try { return JSON.parse(raw); } catch (ignore) { return null; }
 }
 
 function validatePayload_(data) {
@@ -240,7 +286,7 @@ function writeSyncLog_(ss, data, receipt, errorMessage) {
   var requiredHeaders = [
     'Received At', 'CRM Timestamp', 'Filament Rows', 'Product Rows',
     'Sales Rows', 'Customer Rows', 'Wastage Rows', 'Branch Transfer Rows',
-    'Consumables Rows', 'Status', 'Verified', 'Spreadsheet ID', 'Error'
+    'Consumables Rows', 'Status', 'Verified', 'Spreadsheet ID', 'Error', 'Request ID'
   ];
 
   if (sh.getLastRow() === 0) {
@@ -270,7 +316,8 @@ function writeSyncLog_(ss, data, receipt, errorMessage) {
     'Status': errorMessage ? 'FAILED' : 'Verified',
     'Verified': !!(receipt && receipt.verified),
     'Spreadsheet ID': ss.getId(),
-    'Error': errorMessage || ''
+    'Error': errorMessage || '',
+    'Request ID': data.requestId || ''
   };
   sh.appendRow(finalHeaders.map(function(header) {
     return Object.prototype.hasOwnProperty.call(valuesByHeader, header)
