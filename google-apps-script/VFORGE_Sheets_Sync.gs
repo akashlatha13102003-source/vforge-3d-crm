@@ -130,7 +130,20 @@ function doPost(e) {
       consumablesRows: counts.consumables
     };
 
-    writeSyncLog_(ss, data, receipt, '');
+    // Successful syncs with identical report data are logged at most once
+    // within the cooldown window. Reports and receipts are still updated
+    // and verified on every request.
+    var logResult = { recorded: false, reason: '' };
+    try {
+      logResult = writeSyncLog_(ss, data, receipt, '');
+      archiveOldSyncLogs_(ss);
+    } catch (logErr) {
+      receipt.syncLogWarning = String(logErr && logErr.stack ? logErr.stack : logErr);
+      Logger.log('Sync succeeded, but Sync Log maintenance needs attention: ' +
+        receipt.syncLogWarning);
+    }
+    receipt.syncLogRecorded = !!logResult.recorded;
+    receipt.syncLogReason = logResult.reason || '';
     SpreadsheetApp.flush();
     storeReceipt_(data.requestId, receipt);
 
@@ -163,6 +176,7 @@ function doPost(e) {
       if (!ss) ss = SpreadsheetApp.openById(VFORGE_SPREADSHEET_ID);
       writeSyncLog_(ss, data || {}, failureReceipt, message);
       SpreadsheetApp.flush();
+      archiveOldSyncLogs_(ss);
       protectReportSheet_(ss, 'Sync Log');
     } catch (logErr) {
       Logger.log('Could not write failure to Sync Log: ' + String(logErr));
@@ -302,6 +316,16 @@ function writeSyncLog_(ss, data, receipt, errorMessage) {
     });
   }
 
+  // Failures are never throttled. For successful syncs, avoid adding another
+  // row when exactly the same report data was already logged in the last
+  // five minutes. The report tabs are still rewritten and verified above.
+  if (!errorMessage) {
+    var duplicateCheck = shouldLogSuccessfulSync_(data);
+    if (!duplicateCheck.log) {
+      return { recorded: false, reason: duplicateCheck.reason };
+    }
+  }
+
   var finalHeaders = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
   var valuesByHeader = {
     'Received At': new Date(),
@@ -323,8 +347,147 @@ function writeSyncLog_(ss, data, receipt, errorMessage) {
     return Object.prototype.hasOwnProperty.call(valuesByHeader, header)
       ? valuesByHeader[header] : '';
   }));
+
+  if (!errorMessage) rememberSuccessfulSync_(data);
+  return { recorded: true, reason: errorMessage ? 'Failure recorded' : 'New or changed data' };
 }
 
+/**
+ * Return false only when the same complete report payload was successfully
+ * logged less than five minutes ago. A changed payload is always logged.
+ */
+function shouldLogSuccessfulSync_(data) {
+  var signature = successfulPayloadSignature_(data);
+  var props = PropertiesService.getScriptProperties();
+  var previousSignature = props.getProperty('VFORGE_LAST_SUCCESS_SIGNATURE') || '';
+  var previousAt = Number(props.getProperty('VFORGE_LAST_SUCCESS_LOG_AT') || 0);
+  var now = Date.now();
+  var cooldownMs = 5 * 60 * 1000;
+
+  if (signature && signature === previousSignature &&
+      previousAt && now - previousAt < cooldownMs) {
+    return {
+      log: false,
+      reason: 'Identical report data was already logged within the last 5 minutes'
+    };
+  }
+  return { log: true, reason: '' };
+}
+
+function rememberSuccessfulSync_(data) {
+  var props = PropertiesService.getScriptProperties();
+  props.setProperty('VFORGE_LAST_SUCCESS_SIGNATURE', successfulPayloadSignature_(data));
+  props.setProperty('VFORGE_LAST_SUCCESS_LOG_AT', String(Date.now()));
+}
+
+function successfulPayloadSignature_(data) {
+  var payload = {};
+  VFORGE_REPORTS.forEach(function(report) {
+    payload[report.key] = data[report.key] || [];
+  });
+  var digest = Utilities.computeDigest(
+    Utilities.DigestAlgorithm.SHA_256,
+    JSON.stringify(payload),
+    Utilities.Charset.UTF_8
+  );
+  return Utilities.base64Encode(digest);
+}
+
+/**
+ * Keep the newest 1,000 records in Sync Log. Older rows are moved into
+ * monthly archive tabs. Rows are deleted from the live log only after their
+ * archive write succeeds. Request IDs prevent duplicate archiving on retry.
+ */
+function archiveOldSyncLogs_(ss) {
+  var keepRows = 1000;
+  var sh = ss.getSheetByName('Sync Log');
+  if (!sh) return;
+
+  var lastRow = sh.getLastRow();
+  var lastCol = sh.getLastColumn();
+  var dataRows = Math.max(0, lastRow - 1);
+  var archiveCount = dataRows - keepRows;
+  if (archiveCount <= 0 || lastCol <= 0) return;
+
+  var headers = sh.getRange(1, 1, 1, lastCol).getValues()[0];
+  var rows = sh.getRange(2, 1, archiveCount, lastCol).getValues();
+  var receivedAtIndex = headers.indexOf('Received At');
+  var requestIdIndex = headers.indexOf('Request ID');
+  var groups = {};
+
+  rows.forEach(function(row) {
+    var rawDate = receivedAtIndex >= 0 ? row[receivedAtIndex] : null;
+    var date = rawDate instanceof Date ? rawDate : new Date(rawDate);
+    var monthKey = rawDate && !isNaN(date.getTime())
+      ? Utilities.formatDate(date, 'Asia/Kolkata', 'yyyy-MM')
+      : 'Undated';
+    if (!groups[monthKey]) groups[monthKey] = [];
+    groups[monthKey].push(row);
+  });
+
+  // Archive each month in batches. Existing Request IDs are checked before
+  // appending so a retry after a partial failure cannot duplicate archived rows.
+  Object.keys(groups).sort().forEach(function(monthKey) {
+    var archiveName = 'Sync Log Archive ' + monthKey;
+    var archive = ss.getSheetByName(archiveName) || ss.insertSheet(archiveName);
+    removeVforgeProtection_(archive);
+
+    var archiveLastCol = archive.getLastColumn();
+    var archiveHeaders = archive.getLastRow() === 0
+      ? [] : archive.getRange(1, 1, 1, archiveLastCol).getValues()[0];
+
+    headers.forEach(function(header) {
+      if (archiveHeaders.indexOf(header) === -1) archiveHeaders.push(header);
+    });
+
+    if (archive.getLastRow() === 0) {
+      archive.getRange(1, 1, 1, archiveHeaders.length).setValues([archiveHeaders]);
+      archive.setFrozenRows(1);
+    } else if (archiveHeaders.length !== archiveLastCol) {
+      archive.getRange(1, 1, 1, archiveHeaders.length).setValues([archiveHeaders]);
+    }
+
+    var archivedKeys = {};
+    var archiveRequestIndex = archiveHeaders.indexOf('Request ID');
+    var archiveRows = Math.max(0, archive.getLastRow() - 1);
+    if (archiveRows > 0) {
+      archive.getRange(2, 1, archiveRows, archiveHeaders.length)
+        .getValues().forEach(function(archivedRow) {
+          var archivedRequestId = archiveRequestIndex >= 0
+            ? archivedRow[archiveRequestIndex] : '';
+          var archivedKey = archivedRequestId
+            ? 'id:' + String(archivedRequestId)
+            : 'row:' + JSON.stringify(archivedRow);
+          archivedKeys[archivedKey] = true;
+        });
+    }
+
+    var pending = [];
+    groups[monthKey].forEach(function(row) {
+      var requestId = requestIdIndex >= 0 ? row[requestIdIndex] : '';
+      var mapped = archiveHeaders.map(function(header) {
+        var sourceIndex = headers.indexOf(header);
+        return sourceIndex >= 0 ? row[sourceIndex] : '';
+      });
+      var key = requestId ? 'id:' + String(requestId) : 'row:' + JSON.stringify(mapped);
+      if (archivedKeys[key]) return;
+      archivedKeys[key] = true;
+      pending.push(mapped);
+    });
+
+    if (pending.length) {
+      var writeAt = archive.getLastRow() + 1;
+      archive.getRange(writeAt, 1, pending.length, archiveHeaders.length)
+        .setValues(pending);
+      archive.getRange(1, 1, 1, archiveHeaders.length).setFontWeight('bold');
+      archive.autoResizeColumns(1, archiveHeaders.length);
+    }
+    protectReportSheet_(ss, archiveName);
+  });
+
+  // All archive writes completed. Preserve the header and newest 1,000 rows.
+  sh.deleteRows(2, archiveCount);
+}
 function rowCount_(rows) {
   return Array.isArray(rows) ? rows.length : 0;
 }
