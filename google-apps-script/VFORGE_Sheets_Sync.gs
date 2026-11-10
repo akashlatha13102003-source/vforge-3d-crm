@@ -338,17 +338,10 @@ function protectReportSheet_(ss, name) {
   protection.setDescription('VFORGE CRM - Read only. Edit data through the CRM.');
   protection.setWarningOnly(false);
 
-  var me = Session.getEffectiveUser();
-  if (me && me.getEmail()) {
-    try { protection.addEditor(me); } catch (ignore) {}
-  }
-  try {
-    protection.getEditors().forEach(function(user) {
-      if (!me || user.getEmail() !== me.getEmail()) {
-        try { protection.removeEditor(user); } catch (ignore) {}
-      }
-    });
-  } catch (ignore) {}
+  // The web app executes as its owner, who creates this protection and
+  // remains able to edit the sheet. Avoid Session.getEffectiveUser(): it
+  // requires the userinfo.email OAuth scope and can fail after report writes.
+  // Leave existing collaborators unchanged; the spreadsheet owner retains access.
 }
 
 function removeVforgeProtection_(sh) {
