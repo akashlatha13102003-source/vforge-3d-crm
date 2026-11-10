@@ -1629,21 +1629,36 @@ function syncGoogleSheets(silent){
       finish('Timed out after 60 seconds waiting for Google Sheets. The request may still be processing; check Sync Log before retrying.');
     },60000);
 
-    var sent=false;
+    // Submit through a hidden HTML form targeted at an iframe. This uses a
+    // standard application/x-www-form-urlencoded POST, which Apps Script
+    // exposes reliably as e.parameter.payload. sendBeacon/no-cors fetch can
+    // appear queued in the browser without proving that doPost received it.
+    var syncFrame=document.createElement('iframe');
+    syncFrame.name='vforge_sync_frame_'+requestId;
+    syncFrame.style.display='none';
+    document.body.appendChild(syncFrame);
+    var syncForm=document.createElement('form');
+    syncForm.method='POST';
+    syncForm.action=url;
+    syncForm.target=syncFrame.name;
+    syncForm.style.display='none';
+    var payloadInput=document.createElement('input');
+    payloadInput.type='hidden';
+    payloadInput.name='payload';
+    payloadInput.value=JSON.stringify(payloadObject);
+    syncForm.appendChild(payloadInput);
+    document.body.appendChild(syncForm);
     try{
-      if(navigator.sendBeacon)sent=navigator.sendBeacon(url,body);
-    }catch(err){sent=false;}
-    if(!sent){
-      try{
-        fetch(url,{method:'POST',mode:'no-cors',body:body,keepalive:true,credentials:'omit'});
-        sent=true;
-      }catch(err){sent=false;}
-    }
-    if(!sent){
-      finish('The browser could not queue the Google Sheets request.');
+      syncForm.submit();
+      syncForm.remove();
+    }catch(err){
+      syncForm.remove();
+      syncFrame.remove();
+      finish('The browser could not submit the Google Sheets POST: '+String(err));
       return;
     }
-    // Start polling after the POST is queued; the server receipt is authoritative.
+    // The JSONP receipt remains the authority; a form submission alone is
+    // not treated as a successful sync.
     pollTimer=setTimeout(pollReceipt,1500);
   });
 }
