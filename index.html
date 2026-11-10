@@ -1572,10 +1572,11 @@ function syncGoogleSheets(silent){
   body.append('payload',JSON.stringify(payloadObject));
 
   return new Promise(function(resolve,reject){
-    var finished=false,started=Date.now(),pollTimer=null,timeoutTimer=null;
+    var finished=false,started=Date.now(),pollTimer=null,timeoutTimer=null,syncFrame=null;
     function cleanup(){
       if(pollTimer)clearTimeout(pollTimer);
       if(timeoutTimer)clearTimeout(timeoutTimer);
+      if(syncFrame&&syncFrame.parentNode)syncFrame.parentNode.removeChild(syncFrame);
       try{delete window[callbackName];}catch(ignore){window[callbackName]=undefined;}
     }
     function finish(error,receipt){
@@ -1633,7 +1634,7 @@ function syncGoogleSheets(silent){
     // standard application/x-www-form-urlencoded POST, which Apps Script
     // exposes reliably as e.parameter.payload. sendBeacon/no-cors fetch can
     // appear queued in the browser without proving that doPost received it.
-    var syncFrame=document.createElement('iframe');
+    syncFrame=document.createElement('iframe');
     syncFrame.name='vforge_sync_frame_'+requestId;
     syncFrame.style.display='none';
     document.body.appendChild(syncFrame);
