@@ -28,7 +28,10 @@ function doGet() {
       ok: true,
       message: 'VFORGE 3D CRM sync endpoint is running',
       spreadsheetName: ss.getName(),
-      spreadsheetId: ss.getId()
+      spreadsheetId: ss.getId(),
+      reportTabs: VFORGE_REPORTS.map(function(report) {
+        return { name: report.name, exists: !!ss.getSheetByName(report.name) };
+      })
     });
   } catch (err) {
     return json_({ ok: false, error: String(err) });
@@ -47,7 +50,13 @@ function doPost(e) {
     lockAcquired = true;
 
     var raw = e && e.parameter ? e.parameter.payload : null;
-    if (!raw && e && e.postData) raw = e.postData.contents;
+    if (!raw && e && e.postData) {
+      raw = e.postData.contents;
+      // Fallback for form-urlencoded bodies if Apps Script did not populate e.parameter.
+      if (raw && raw.indexOf('payload=') === 0) {
+        raw = decodeURIComponent(raw.substring(8).replace(/\\+/g, '%20'));
+      }
+    }
     if (!raw) throw new Error('Missing payload');
 
     // URLSearchParams posts payload as a form parameter. Also accept raw JSON.
@@ -174,7 +183,11 @@ function writeReport_(ss, name, rows) {
   removeVforgeProtection_(sh);
 
   if (!rows.length) {
-    sh.clearContents();
+    var previousRows = sh.getLastRow();
+    var previousCols = sh.getLastColumn();
+    if (previousRows > 0 && previousCols > 0) {
+      sh.getRange(1, 1, previousRows, previousCols).clearContent();
+    }
     sh.getRange(1, 1).setValue('No data');
     sh.setFrozenRows(0);
     return;
@@ -191,13 +204,30 @@ function writeReport_(ss, name, rows) {
     }
     values.push(headers.map(function(header) {
       var value = row[header];
-      return value === undefined || value === null ? '' : value;
+      if (value === undefined || value === null) return '';
+      if (typeof value === 'object') {
+        throw new Error('Unsupported object value in ' + name + ', row ' +
+          (index + 1) + ', column ' + header);
+      }
+      return value;
     }));
   });
 
-  // Only clear the report after its replacement data has been validated.
-  sh.clearContents();
+  // Write the complete replacement first. Only after it succeeds, clear stale
+  // trailing cells from the previous report so a failed write won't blank it.
+  var previousRows = sh.getLastRow();
+  var previousCols = sh.getLastColumn();
   sh.getRange(1, 1, values.length, headers.length).setValues(values);
+
+  if (previousRows > values.length && previousCols > 0) {
+    sh.getRange(values.length + 1, 1,
+      previousRows - values.length, previousCols).clearContent();
+  }
+  if (previousCols > headers.length) {
+    sh.getRange(1, headers.length + 1,
+      Math.max(previousRows, values.length), previousCols - headers.length).clearContent();
+  }
+
   sh.getRange(1, 1, 1, headers.length).setFontWeight('bold');
   sh.setFrozenRows(1);
   sh.autoResizeColumns(1, headers.length);
