@@ -450,23 +450,29 @@ function archiveOldSyncLogs_(ss) {
     var archivedKeys = {};
     var archiveRequestIndex = archiveHeaders.indexOf('Request ID');
     var archiveRows = Math.max(0, archive.getLastRow() - 1);
-    if (archiveRows > 0 && archiveRequestIndex >= 0) {
-      archive.getRange(2, archiveRequestIndex + 1, archiveRows, 1)
-        .getValues().forEach(function(cell) {
-          if (cell[0]) archivedKeys['id:' + String(cell[0])] = true;
+    if (archiveRows > 0) {
+      archive.getRange(2, 1, archiveRows, archiveHeaders.length)
+        .getValues().forEach(function(archivedRow) {
+          var archivedRequestId = archiveRequestIndex >= 0
+            ? archivedRow[archiveRequestIndex] : '';
+          var archivedKey = archivedRequestId
+            ? 'id:' + String(archivedRequestId)
+            : 'row:' + JSON.stringify(archivedRow);
+          archivedKeys[archivedKey] = true;
         });
     }
 
     var pending = [];
     groups[monthKey].forEach(function(row) {
       var requestId = requestIdIndex >= 0 ? row[requestIdIndex] : '';
-      var key = requestId ? 'id:' + String(requestId) : 'row:' + JSON.stringify(row);
-      if (archivedKeys[key]) return;
-      archivedKeys[key] = true;
-      pending.push(archiveHeaders.map(function(header) {
+      var mapped = archiveHeaders.map(function(header) {
         var sourceIndex = headers.indexOf(header);
         return sourceIndex >= 0 ? row[sourceIndex] : '';
-      }));
+      });
+      var key = requestId ? 'id:' + String(requestId) : 'row:' + JSON.stringify(mapped);
+      if (archivedKeys[key]) return;
+      archivedKeys[key] = true;
+      pending.push(mapped);
     });
 
     if (pending.length) {
