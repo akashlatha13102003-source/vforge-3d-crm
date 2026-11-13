@@ -61,6 +61,7 @@ function doPost(e) {
   var ss = null;
   var counts = {};
   var authChecked = false;
+  var reportBackup = null;
 
   try {
     lock.waitLock(30000);
@@ -87,6 +88,10 @@ function doPost(e) {
     if (ss.getId() !== VFORGE_SPREADSHEET_ID) {
       throw new Error('Spreadsheet ID mismatch. Refusing to write to an unexpected file.');
     }
+
+    // Capture every report tab before the first write. Google Sheets has no
+    // multi-tab transaction, so a later failure must restore earlier tabs.
+    reportBackup = snapshotReportSheets_(ss);
 
     VFORGE_REPORTS.forEach(function(report) {
       counts[report.key] = data[report.key].length;
@@ -166,6 +171,18 @@ function doPost(e) {
     // a receipt, or allowing arbitrary callers to create failure-log entries.
     if (!authChecked) return json_({ ok: false, verified: false, error: message });
 
+    // Google Sheets cannot commit multiple tab writes atomically. Restore the
+    // previous report contents if any report write/verification step failed.
+    if (reportBackup && ss) {
+      try {
+        restoreReportSheets_(ss, reportBackup);
+        SpreadsheetApp.flush();
+      } catch (rollbackErr) {
+        Logger.log('VFORGE REPORT ROLLBACK FAILED: ' + String(rollbackErr && rollbackErr.stack ? rollbackErr.stack : rollbackErr));
+        message += '\\nReport rollback also failed: ' + String(rollbackErr);
+      }
+    }
+
     // Record failures in the target spreadsheet too. This prevents a failed
     // sync from disappearing simply because Apps Script reports "Completed".
     var failureReceipt = {
@@ -203,6 +220,66 @@ function doPost(e) {
   }
 }
 
+
+/**
+ * Snapshot report tab contents before a multi-tab sync. Missing tabs are
+ * recorded so rollback can remove tabs created by the failed attempt.
+ */
+function snapshotReportSheets_(ss) {
+  var backup = {};
+  VFORGE_REPORTS.forEach(function(report) {
+    var sh = ss.getSheetByName(report.name);
+    if (!sh) {
+      backup[report.name] = { exists: false };
+      return;
+    }
+    var range = sh.getDataRange();
+    backup[report.name] = {
+      exists: true,
+      rows: range.getNumRows(),
+      cols: range.getNumColumns(),
+      values: range.getValues(),
+      formulas: range.getFormulas(),
+      frozenRows: sh.getFrozenRows()
+    };
+  });
+  return backup;
+}
+
+/**
+ * Restore report values/formulas and frozen headers after a failed sync.
+ * This is a best-effort rollback; a Sheets service failure can also prevent
+ * restoration, in which case the Sync Log records the rollback failure.
+ */
+function restoreReportSheets_(ss, backup) {
+  VFORGE_REPORTS.forEach(function(report) {
+    var prior = backup[report.name];
+    if (!prior) return;
+    var sh = ss.getSheetByName(report.name);
+    if (!prior.exists) {
+      if (sh) ss.deleteSheet(sh);
+      return;
+    }
+    if (!sh) sh = ss.insertSheet(report.name);
+    removeVforgeProtection_(sh);
+    var currentRows = sh.getLastRow();
+    var currentCols = sh.getLastColumn();
+    if (currentRows > 0 && currentCols > 0) {
+      sh.getRange(1, 1, currentRows, currentCols).clearContent();
+    }
+    if (prior.rows > 0 && prior.cols > 0) {
+      var target = sh.getRange(1, 1, prior.rows, prior.cols);
+      target.setValues(prior.values);
+      prior.formulas.forEach(function(row, r) {
+        row.forEach(function(formula, c) {
+          if (formula) sh.getRange(r + 1, c + 1).setFormula(formula);
+        });
+      });
+    }
+    sh.setFrozenRows(prior.frozenRows || 0);
+    protectReportSheet_(ss, report.name);
+  });
+}
 
 function storeReceipt_(requestId, receipt) {
   if (!requestId) return;
