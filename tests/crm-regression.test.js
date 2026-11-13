@@ -364,3 +364,29 @@ test('Marketing entries can be edited without replacing their record or changing
   assert.match(source, /Production quantity, filament recipe and recorded production costs are kept unchanged/);
   assert.match(source, /productAvailableQty\(product\.id,null\)\+currentQty/);
 });
+
+test('Google Sheets auto-sync covers every collection that contributes to report tabs', () => {
+  const start = source.indexOf("var SHEETS_SYNC_COLLECTIONS=");
+  const end = source.indexOf("function save(col,id,data)", start);
+  assert.notEqual(start, -1, 'report-driving collection list must exist');
+  assert.notEqual(end, -1, 'auto-sync collection helper must precede save/remove');
+  const syncCoverage = source.slice(start, end);
+  for (const collection of ['filaments','printers','products','customers','sales','wastage','transfers','supplies']) {
+    assert.match(syncCoverage, new RegExp("'" + collection + "'"), collection + ' must trigger auto-sync');
+  }
+  assert.match(syncCoverage, /function shouldAutoSyncCollection\(col\)/);
+  assert.match(source, /if\(shouldAutoSyncCollection\(col\)\)queueAutoSheetsSync\('saved:'\+col\)/);
+  assert.match(source, /if\(shouldAutoSyncCollection\(col\)\)queueAutoSheetsSync\('removed:'\+col\)/);
+});
+
+test('automatic Google Sheets sync preserves queued changes and retries transient failures', () => {
+  const start = source.indexOf('function queueAutoSheetsSync(reason,retryCount)');
+  const end = source.indexOf('function syncStateAfterSave(col)', start);
+  assert.notEqual(start, -1, 'auto-sync queue must exist');
+  const queue = source.slice(start, end);
+  assert.match(queue, /if\(autoSheetsQueued\)/);
+  assert.match(queue, /queued-after-failure/);
+  assert.match(queue, /attempts<2/);
+  assert.match(queue, /syncGoogleSheets\(true\)/);
+});
+
