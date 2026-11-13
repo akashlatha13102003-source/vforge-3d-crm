@@ -301,7 +301,15 @@ function getCloudConfig(){
   }
 }
 function setCloudConfig(c){
-  try{localStorage.setItem(CLOUD_LOCAL_KEY,JSON.stringify(c||{}));}catch(e){}
+  var serialized=JSON.stringify(c||{});
+  try{
+    localStorage.setItem(CLOUD_LOCAL_KEY,serialized);
+    if(localStorage.getItem(CLOUD_LOCAL_KEY)!==serialized)throw new Error('Cloud settings read-back did not match the saved value.');
+  }catch(e){
+    var error=new Error('Could not safely save the cloud connection settings in this browser. Check available browser storage and try again. The CRM has not confirmed a persistent cloud connection.');
+    error.cause=e;
+    throw error;
+  }
 }
 function clearCloudConfig(){
   try{localStorage.removeItem(CLOUD_LOCAL_KEY);}catch(e){}
