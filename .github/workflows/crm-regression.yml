@@ -35,3 +35,5 @@ jobs:
         run: node tests/transfer-integrity.test.js
       - name: Run save and refresh consistency checks
         run: node tests/save-refresh-integrity.test.js
+      - name: Run local storage integrity checks
+        run: node tests/local-storage-integrity.test.js
