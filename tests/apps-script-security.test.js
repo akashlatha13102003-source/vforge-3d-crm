@@ -45,6 +45,14 @@ assert.ok(doPostSource.indexOf('requireSyncToken_(data.authToken)') < doPostSour
   'unauthorized requests must be rejected before opening the spreadsheet');
 assert.match(doPostSource, /if \(!authChecked\) return json_\(/,
   'unauthenticated requests must return without entering the failure-log spreadsheet path');
+assert.ok(doPostSource.indexOf('snapshotReportSheets_(ss)') < doPostSource.indexOf('writeReport_(ss'),
+  'all report tabs must be snapshotted before the first report write');
+assert.match(doPostSource, /restoreReportSheets_\(ss, reportBackup\)/,
+  'a failed report write or verification must trigger rollback');
+assert.match(source, /function snapshotReportSheets_\(ss\)/,
+  'report snapshot helper must exist');
+assert.match(source, /function restoreReportSheets_\(ss, backup\)/,
+  'report rollback helper must exist');
 
 process.stdout.write('PASS Apps Script endpoint requires configured token before spreadsheet access\n');
 process.stdout.write('PASS formula-like strings are neutralized while numeric values remain numeric\n');
