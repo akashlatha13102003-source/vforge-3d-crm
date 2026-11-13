@@ -375,8 +375,8 @@ test('Google Sheets auto-sync covers every collection that contributes to report
     assert.match(syncCoverage, new RegExp("'" + collection + "'"), collection + ' must trigger auto-sync');
   }
   assert.match(syncCoverage, /function shouldAutoSyncCollection\(col\)/);
-  assert.match(source, /if\(shouldAutoSyncCollection\(col\)\)queueAutoSheetsSync\('saved:'\+col\)/);
-  assert.match(source, /if\(shouldAutoSyncCollection\(col\)\)queueAutoSheetsSync\('removed:'\+col\)/);
+  assert.match(source, /function refreshAfterMutation\(col,id,data,removed,action\)/);
+  assert.match(source, /queueAutoSheetsSync\(action\+'\:'\+col\)/);
 });
 
 test('automatic Google Sheets sync preserves queued changes and retries transient failures', () => {

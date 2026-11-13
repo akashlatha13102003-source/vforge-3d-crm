@@ -508,31 +508,50 @@ function syncStateAfterSave(col){
     return true;
   });
 }
+function applyMutationToState(col,id,data,removed){
+  if(COLS.indexOf(col)<0||col==='settings')return;
+  var current=Array.isArray(state[col])?state[col].slice():[];
+  var index=current.findIndex(function(item){return item.id===id;});
+  if(removed){
+    if(index>=0)current.splice(index,1);
+  }else{
+    var record=Object.assign({id:id},data||{});
+    if(index>=0)current[index]=record;else current.push(record);
+  }
+  state[col]=current;
+  ver++;state.updatedAt=new Date();
+  if(state.ready){renderContent();setStamp();}
+}
+function refreshAfterMutation(col,id,data,removed,action){
+  return syncStateAfterSave(col).catch(function(error){
+    applyMutationToState(col,id,data,removed);
+    toast('Record '+(removed?'deleted':'saved')+', but the list could not refresh. The change was accepted by storage; refresh the page or try Refresh to reload the latest data.',true);
+    if(window.console&&console.warn)console.warn('CRM '+action+' succeeded but collection refresh failed:',error);
+    return false;
+  }).then(function(){
+    if(shouldAutoSyncCollection(col))queueAutoSheetsSync(action+':'+col);
+    return true;
+  });
+}
 var SHEETS_SYNC_COLLECTIONS=['filaments','printers','products','customers','sales','wastage','transfers','supplies'];
 function shouldAutoSyncCollection(col){
   return SHEETS_SYNC_COLLECTIONS.indexOf(col)>=0;
 }
 function save(col,id,data){
   return Promise.resolve().then(function(){return backend.save(col,id,data);}).then(function(){
-    if(COLS.indexOf(col)>=0&&col!=='settings'){
-      return syncStateAfterSave(col).then(function(){
-        if(shouldAutoSyncCollection(col))queueAutoSheetsSync('saved:'+col);
-        return true;
-      });
-    }
+    if(COLS.indexOf(col)>=0&&col!=='settings')return refreshAfterMutation(col,id,data,false,'saved');
     return true;
-  },function(e){toast(errMsg(e),true);return false;});
+  }).catch(function(e){
+    toast(errMsg(e),true);return false;
+  });
 }
 function remove(col,id){
   return Promise.resolve().then(function(){return backend.remove(col,id);}).then(function(){
-    if(COLS.indexOf(col)>=0&&col!=='settings'){
-      return syncStateAfterSave(col).then(function(){
-        if(shouldAutoSyncCollection(col))queueAutoSheetsSync('removed:'+col);
-        return true;
-      });
-    }
+    if(COLS.indexOf(col)>=0&&col!=='settings')return refreshAfterMutation(col,id,null,true,'removed');
     return true;
-  },function(e){toast(errMsg(e),true);return false;});
+  }).catch(function(e){
+    toast(errMsg(e),true);return false;
+  });
 }
 function migrateLocalToCloud(){
   return Promise.reject(new Error('Automatic local-to-cloud migration is disabled for data safety. Use an explicit reviewed import with a backup.'));
