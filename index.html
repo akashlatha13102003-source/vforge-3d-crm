@@ -384,6 +384,20 @@ function cloudRefresh(){
     return cloudSession;
   });
 }
+function makeUnavailableBackend(message){
+  var reason='Cloud connection failed. '+(message||'Please reconnect to the company database.')+
+    ' Your browser-local records were not substituted. Reconnect Cloud in Settings before continuing.';
+  function unavailable(){return Promise.reject(new Error(reason));}
+  return {
+    kind:'cloud-error',
+    warning:reason,
+    fetch:unavailable,
+    subscribe:function(col,cb,onErr){if(onErr)onErr(new Error(reason));return function(){};},
+    save:unavailable,
+    remove:unavailable,
+    newId:function(){return Date.now().toString(36)+Math.random().toString(36).slice(2,9);}
+  };
+}
 function makeSupabaseBackend(){
   var c=getCloudConfig();
   if(!c.url||!c.anonKey||!cloudSession||!cloudSession.user)return null;
@@ -788,6 +802,7 @@ function renderNotice(){
   if(state.storage==='cloud')n.innerHTML='<div class="note" style="background:var(--accent-wash);color:var(--ink)">✓ Cloud database connected — VFORGE data is synced online.</div>';
   else if(state.storage==='device')n.innerHTML='<div class="note">Working offline: entries are saved in this browser only. Connect the cloud database in Settings.</div>';
   else if(state.storage==='memory')n.innerHTML='<div class="note">Storage is blocked here, so entries will be lost when you close this page.</div>';
+  else if(state.storage==='cloud-error')n.innerHTML='<div class="note" style="background:var(--danger-wash);color:var(--ink)">Cloud connection failed. The CRM has not switched to browser storage. Reconnect the company database in Settings before making changes.</div>';
   else n.innerHTML='';
 }
 function searchBox(ph){return '<label class="search"><span class="sr">Search</span><input id="q" type="search" placeholder="'+esc(ph)+'" value="'+esc(state.q)+'" autocomplete="off"></label>';}
@@ -2010,10 +2025,13 @@ function boot(){
         backend=makeSupabaseBackend();
         if(backend){state.storage='cloud';return true;}
         throw new Error('Cloud backend could not be initialized.');
-      }).catch(function(){
+      }).catch(function(error){
         cloudSession=null;
-        backend=makeLocalBackend();
-        state.storage=backend.kind;
+        // A configured company cloud account must never silently fall back to
+        // a separate browser-local dataset. Keep the CRM fail-closed until the
+        // user explicitly reconnects or chooses Disconnect Cloud.
+        backend=makeUnavailableBackend(error&&error.message);
+        state.storage='cloud-error';
         return false;
       });
     }
