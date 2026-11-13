@@ -23,3 +23,5 @@ jobs:
         run: node tests/crm-regression.test.js
       - name: Run isolated workspace adapter contract tests
         run: node tests/shared-workspace-adapter.test.js
+      - name: Run supply history integrity checks
+        run: node tests/supply-history.test.js
