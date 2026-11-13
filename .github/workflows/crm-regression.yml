@@ -49,3 +49,5 @@ jobs:
         run: node tests/cloud-config-corruption.test.js
       - name: Run cloud settings persistence checks
         run: node tests/cloud-settings-persistence.test.js
+      - name: Run atomic refresh consistency checks
+        run: node tests/atomic-refresh.test.js
