@@ -637,7 +637,12 @@ function connectCloudFromForm(form,signup){
   var email=ctl(form,'cloud-email').value.trim();
   var password=ctl(form,'cloud-password').value;
   if(!url||!key||!email||!password){toast('Enter Supabase Project URL, publishable key, email and password.',true);return;}
-  setCloudConfig({url:url,anonKey:key,email:email});
+  try{
+    setCloudConfig({url:url,anonKey:key,email:email});
+  }catch(storageError){
+    toast(errMsg(storageError),true);
+    return;
+  }
   supabaseClient=null;
   toast(signup?'Creating cloud account…':'Connecting to cloud…');
   cloudAuth(signup?'signup':'signin',email,password).then(function(data){
@@ -646,7 +651,17 @@ function connectCloudFromForm(form,signup){
       return;
     }
     cloudSession=data;
-    var cfg=getCloudConfig();cfg.refreshToken=data.refresh_token;cfg.userId=data.user&&data.user.id;setCloudConfig(cfg);
+    var cfg=getCloudConfig();cfg.refreshToken=data.refresh_token;cfg.userId=data.user&&data.user.id;
+    try{
+      setCloudConfig(cfg);
+    }catch(storageError){
+      cloudSession=null;
+      backend=makeUnavailableBackend('The login succeeded, but the session could not be saved persistently. Reconnect after enabling browser storage.');
+      state.storage='cloud-error';
+      renderNotice();
+      toast(errMsg(storageError),true);
+      return;
+    }
     // SAFETY: never auto-upload this browser's local data into the signed-in
     // cloud account. The old behavior could overwrite matching IDs or mix one
     // staff member's local records into another account. Connect first and
