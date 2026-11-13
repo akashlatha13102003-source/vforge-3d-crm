@@ -1602,6 +1602,7 @@ function syncGoogleSheets(silent){
   var callbackName='vforgeSheetsReceipt_'+requestId.replace(/[^A-Za-z0-9_$]/g,'_');
   var payloadObject=JSON.parse(sheetsPayload());
   payloadObject.requestId=requestId;
+  payloadObject.authToken=String(state.settings.googleSheetsToken||'');
   var body=new URLSearchParams();
   body.append('payload',JSON.stringify(payloadObject));
 
@@ -1773,6 +1774,7 @@ function openSettings(){
     +'<p class="small muted" style="margin:-8px 0 0">Tariffs differ by state and by home or commercial connection, so there is no single national price. Homes are commonly around \\u20b95 to \\u20b98 a unit and commercial connections \\u20b98 to \\u20b916. For the most accurate number, divide a full month\\u2019s bill by the units used.</p>'
     +'<div class="field"><label for="st-low">Warn when a filament is below (g)</label><input id="st-low" name="low" type="number" inputmode="numeric" min="0" step="any" value="'+esc(s.lowStock)+'"></div>'
     +'<div class="field"><label for="st-sheets">Google Sheets Web App URL <span class="opt">optional</span></label><input id="st-sheets" name="sheets" type="url" placeholder="https://script.google.com/macros/s/.../exec" value="'+esc(s.googleSheetsUrl||'')+'"></div>'
+    +'<div class="field"><label for="st-sheets-token">Google Sheets sync token</label><input id="st-sheets-token" name="sheets-token" type="password" autocomplete="new-password" placeholder="Enter the same token configured in Apps Script"></div><p class="small muted">Required after the secure endpoint update. Configure the same value as the VFORGE_SYNC_TOKEN Script Property in Apps Script. CRM users who can access Settings can use this token.</p>'
     +(s.lastSheetsSync?'<div class="small muted">Last sync attempt: '+esc(new Date(s.lastSheetsSync).toLocaleString())+'</div>':'')+'</div>'
     +'<div class="part"><h3>Export &amp; backup tools</h3><p class="hint">Export your records or validate a backup file without changing live data.</p><div style="display:flex;gap:10px;flex-wrap:wrap"><button type="button" class="btn" data-export="csv">Sales as CSV</button><button type="button" class="btn" data-export="json">Everything as JSON</button><button type="button" class="btn" data-backup-preview>Validate backup</button></div><p class="small muted">Validation only: this tool never imports or overwrites CRM records.</p></div>'
     +'</div>'+foot('',false,'Save settings');
@@ -1835,7 +1837,7 @@ function openSettings(){
   wireSubmit(form,function(){
     var low=Math.max(0,num(ctl(form,'low').value));
     var newUrl=ctl(form,'sheets').value.trim();
-    return save('settings','main',{currency:ctl(form,'currency').value,lowStock:low,powerRate:Math.max(0,num(ctl(form,'rate').value)),googleSheetsUrl:newUrl,lastSheetsSync:s.lastSheetsSync||''}).then(function(ok){
+    return save('settings','main',{currency:ctl(form,'currency').value,lowStock:low,powerRate:Math.max(0,num(ctl(form,'rate').value)),googleSheetsUrl:newUrl,googleSheetsToken:ctl(form,'sheets-token').value||s.googleSheetsToken||'',lastSheetsSync:s.lastSheetsSync||''}).then(function(ok){
       if(ok){state.settings.googleSheetsUrl=newUrl;toast('Settings saved');}
       return ok;
     });
