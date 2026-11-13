@@ -466,17 +466,40 @@ function errMsg(e){
   return (e&&e.message)||'Could not save. Try again.';
 }
 var autoSheetsTimer=null,autoSheetsBusy=false,autoSheetsQueued=false;
-function queueAutoSheetsSync(reason){
+function queueAutoSheetsSync(reason,retryCount){
   var url=(state.settings.googleSheetsUrl||'').trim();
   if(!url||!state.ready)return;
+  if(autoSheetsBusy){autoSheetsQueued=true;return;}
   clearTimeout(autoSheetsTimer);
   autoSheetsTimer=setTimeout(function(){
     if(autoSheetsBusy){autoSheetsQueued=true;return;}
     autoSheetsBusy=true;
     syncGoogleSheets(true).then(function(){
       autoSheetsBusy=false;
-      if(autoSheetsQueued){autoSheetsQueued=false;queueAutoSheetsSync('queued');}
-    },function(){autoSheetsBusy=false;});
+      if(autoSheetsQueued){
+        autoSheetsQueued=false;
+        queueAutoSheetsSync('queued',0);
+      }
+    },function(error){
+      autoSheetsBusy=false;
+      // A change queued during this request must still be sent, even if this
+      // attempt failed. Otherwise retry the latest state twice for transient
+      // network or Apps Script hiccups.
+      if(autoSheetsQueued){
+        autoSheetsQueued=false;
+        queueAutoSheetsSync('queued-after-failure',0);
+        return;
+      }
+      var attempts=Number(retryCount||0);
+      if(attempts<2){
+        var delay=attempts===0?2000:5000;
+        autoSheetsTimer=setTimeout(function(){
+          queueAutoSheetsSync('retry:'+String(reason||'change'),attempts+1);
+        },delay);
+      }else if(window.console&&console.warn){
+        console.warn('Automatic Google Sheets sync failed after retries:',error);
+      }
+    });
   },900);
 }
 function syncStateAfterSave(col){
@@ -485,13 +508,15 @@ function syncStateAfterSave(col){
     return true;
   });
 }
+var SHEETS_SYNC_COLLECTIONS=['filaments','printers','products','customers','sales','wastage','transfers','supplies'];
+function shouldAutoSyncCollection(col){
+  return SHEETS_SYNC_COLLECTIONS.indexOf(col)>=0;
+}
 function save(col,id,data){
   return Promise.resolve().then(function(){return backend.save(col,id,data);}).then(function(){
     if(COLS.indexOf(col)>=0&&col!=='settings'){
       return syncStateAfterSave(col).then(function(){
-        if(['filaments','products','sales','customers','wastage','transfers','supplies'].indexOf(col)>=0){
-          queueAutoSheetsSync('saved:'+col);
-        }
+        if(shouldAutoSyncCollection(col))queueAutoSheetsSync('saved:'+col);
         return true;
       });
     }
@@ -502,9 +527,7 @@ function remove(col,id){
   return Promise.resolve().then(function(){return backend.remove(col,id);}).then(function(){
     if(COLS.indexOf(col)>=0&&col!=='settings'){
       return syncStateAfterSave(col).then(function(){
-        if(['filaments','products','sales','customers','wastage','transfers'].indexOf(col)>=0){
-          queueAutoSheetsSync('removed:'+col);
-        }
+        if(shouldAutoSyncCollection(col))queueAutoSheetsSync('removed:'+col);
         return true;
       });
     }
