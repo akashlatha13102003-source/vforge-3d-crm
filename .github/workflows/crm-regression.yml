@@ -37,3 +37,5 @@ jobs:
         run: node tests/save-refresh-integrity.test.js
       - name: Run settings report sync checks
         run: node tests/settings-report-sync.test.js
+      - name: Run cloud fail-closed checks
+        run: node tests/cloud-fail-closed.test.js
