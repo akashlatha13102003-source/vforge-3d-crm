@@ -288,11 +288,17 @@ var DEFAULT_CLOUD_URL='https://ogvbazpddpspmxvylypu.supabase.co';
 var DEFAULT_CLOUD_KEY='sb_publishable_909chAD-mfxaSgrTNYKRXg_XOtgMbr_';
 var cloudSession=null;
 var cloudPollers=[];
+var cloudConfigError=null;
 function getCloudConfig(){
   try{
-    var saved=JSON.parse(localStorage.getItem(CLOUD_LOCAL_KEY)||'{}')||{};
+    var raw=localStorage.getItem(CLOUD_LOCAL_KEY);
+    var saved=JSON.parse(raw||'{}');
+    if(!saved||typeof saved!=='object'||Array.isArray(saved))throw new Error('Saved cloud settings are not a valid object.');
     return Object.assign({url:DEFAULT_CLOUD_URL,anonKey:DEFAULT_CLOUD_KEY},saved);
-  }catch(e){return {url:DEFAULT_CLOUD_URL,anonKey:DEFAULT_CLOUD_KEY};}
+  }catch(e){
+    cloudConfigError='Saved cloud connection settings could not be read. The CRM has not switched to browser-local records. Recover the original browser settings or reconnect Cloud before continuing.';
+    return {url:DEFAULT_CLOUD_URL,anonKey:DEFAULT_CLOUD_KEY};
+  }
 }
 function setCloudConfig(c){
   try{localStorage.setItem(CLOUD_LOCAL_KEY,JSON.stringify(c||{}));}catch(e){}
@@ -2056,6 +2062,11 @@ function boot(){
   var dlP=useFn?Promise.resolve().then(function(){return claude.use('downloads');}).catch(function(){return null;}):Promise.resolve(null);
   Promise.resolve().then(function(){
     var cc=getCloudConfig();
+    if(cloudConfigError){
+      backend=makeUnavailableBackend(cloudConfigError);
+      state.storage='cloud-error';
+      return false;
+    }
     if(cc.url&&cc.anonKey&&cc.refreshToken){
       return cloudRefresh().then(function(){
         backend=makeSupabaseBackend();

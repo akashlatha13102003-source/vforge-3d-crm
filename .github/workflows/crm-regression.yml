@@ -45,3 +45,5 @@ jobs:
         run: node tests/cloud-fail-closed.test.js
       - name: Run local storage integrity checks
         run: node tests/local-storage-integrity.test.js
+      - name: Run cloud config corruption checks
+        run: node tests/cloud-config-corruption.test.js
