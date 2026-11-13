@@ -39,3 +39,5 @@ jobs:
         run: node tests/settings-report-sync.test.js
       - name: Run Sheets sync timestamp checks
         run: node tests/sheets-sync-timestamp.test.js
+      - name: Run Sheets sync rollback checks
+        run: node tests/apps-script-security.test.js
