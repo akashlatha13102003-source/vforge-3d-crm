@@ -27,10 +27,12 @@ const declaration = source.slice(start, end).trimEnd();
   const bootStart = source.indexOf('function boot(){');
   const bootEnd = source.indexOf('\nboot();', bootStart);
   const boot = source.slice(bootStart, bootEnd);
-  const failurePath = boot.slice(boot.indexOf('}).catch(function(error){'));
-  assert.match(failurePath, /makeUnavailableBackend\(error&&error\.message\)/,
+  const cloudBranch = boot.slice(boot.indexOf('if(cc.url&&cc.anonKey&&cc.refreshToken)'));
+  const failureMatch = cloudBranch.match(/return cloudRefresh\\(\\)\\.then\\(function\\(\\)\\{[\\s\\S]*?\\}\\)\\.catch\\(function\\(error\\)\\{([\\s\\S]*?)\\}\\);/);
+  assert.ok(failureMatch, 'the configured cloud refresh failure handler must exist');
+  assert.match(failureMatch[1], /makeUnavailableBackend\\(error&&error\\.message\\)/,
     'a configured cloud session failure must use the unavailable backend');
-  assert.doesNotMatch(failurePath, /makeLocalBackend\(\)/,
+  assert.doesNotMatch(failureMatch[1], /makeLocalBackend\\(\\)/,
     'a configured cloud session failure must not silently switch to local storage');
   assert.match(source, /state\.storage==='cloud-error'/,
     'the UI must show an explicit cloud connection failure notice');
