@@ -42,7 +42,7 @@ async function runTest(name, fn) {
     const context = {
       state: { settings: original },
       backend: { save: () => Promise.reject(new Error('offline')) },
-      Date, Promise, console: { warn: () => {} }
+      Date, Promise, window: { console: { warn: () => {} } }, console: { warn: () => {} }
     };
     vm.createContext(context);
     vm.runInContext(declaration, context);
