@@ -1638,6 +1638,17 @@ function testGoogleSheets(){
   frame.onload=function(){toast('Connection test opened. This does not confirm that a report was written; use Sync and check the Sync Log in Sheets.',true);};
   frame.src=url+'?test='+encodeURIComponent(Date.now());
 }
+function recordSheetsSyncAttempt(attemptedAt){
+  if(!backend)return Promise.resolve(false);
+  var next=Object.assign({},state.settings,{lastSheetsSync:new Date(attemptedAt||Date.now()).toISOString()});
+  return Promise.resolve().then(function(){return backend.save('settings','main',next);}).then(function(){
+    state.settings=next;
+    return true;
+  }).catch(function(error){
+    if(window.console&&console.warn)console.warn('Could not save Google Sheets sync timestamp:',error);
+    return false;
+  });
+}
 function syncGoogleSheets(silent){
   var url=(state.settings.googleSheetsUrl||'').trim();
   if(!url){
@@ -1667,17 +1678,19 @@ function syncGoogleSheets(silent){
     function finish(error,receipt){
       if(finished)return;
       finished=true;cleanup();
-      if(error){
-        if(!silent)toast('Google Sheets sync failed: '+error,true);
-        reject(new Error(error));
-        return;
-      }
-      var localTime=new Date(receipt.syncedAt).toLocaleString('en-IN',{timeZone:'Asia/Kolkata'});
-      if(!silent)toast('✓ Google Sheets verified at '+localTime+
-        ' · Products '+receipt.productRows+
-        ' · Sales '+receipt.salesRows+
-        ' · Transfers '+receipt.branchTransferRows,false);
-      resolve(receipt);
+      recordSheetsSyncAttempt(started).then(function(){
+        if(error){
+          if(!silent)toast('Google Sheets sync failed: '+error,true);
+          reject(new Error(error));
+          return;
+        }
+        var localTime=new Date(receipt.syncedAt).toLocaleString('en-IN',{timeZone:'Asia/Kolkata'});
+        if(!silent)toast('✓ Google Sheets verified at '+localTime+
+          ' · Products '+receipt.productRows+
+          ' · Sales '+receipt.salesRows+
+          ' · Transfers '+receipt.branchTransferRows,false);
+        resolve(receipt);
+      });
     }
     function pollReceipt(){
       if(finished)return;
