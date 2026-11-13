@@ -1,6 +1,6 @@
 'use strict';
 
-// Focused security regression tests for the Google Apps Script endpoint.
+// Focused security regression tests for the Google Apps Script endpoint (including underscored Apps Script helper names).
 const fs = require('node:fs');
 const vm = require('node:vm');
 const assert = require('node:assert/strict');
