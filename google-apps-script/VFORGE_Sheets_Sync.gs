@@ -243,7 +243,7 @@ function constantTimeEquals_(a, b) {
 /** Prevent untrusted strings from becoming spreadsheet formulas. */
 function safeSheetValue_(value) {
   if (typeof value !== 'string') return value;
-  return /^[\\s]*[=+\\-@]/.test(value) ? "'" + value : value;
+  return /^[\s]*[=+\-@]/.test(value) ? "'" + value : value;
 }
 
 function validatePayload_(data) {
