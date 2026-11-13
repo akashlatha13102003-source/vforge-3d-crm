@@ -21,6 +21,8 @@ jobs:
           node-version: 22
       - name: Run CRM business-logic regression checks
         run: node tests/crm-regression.test.js
+      - name: Run Apps Script security regression checks
+        run: node tests/apps-script-security.test.js
       - name: Run isolated workspace adapter contract tests
         run: node tests/shared-workspace-adapter.test.js
       - name: Run financial integrity regression checks

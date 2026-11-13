@@ -60,6 +60,7 @@ function doPost(e) {
   var data = null;
   var ss = null;
   var counts = {};
+  var authChecked = false;
 
   try {
     lock.waitLock(30000);
@@ -79,6 +80,8 @@ function doPost(e) {
     if (typeof raw !== 'string') throw new Error('Payload must be a JSON string');
     data = JSON.parse(raw);
     validatePayload_(data);
+    requireSyncToken_(data.authToken);
+    authChecked = true;
 
     ss = SpreadsheetApp.openById(VFORGE_SPREADSHEET_ID);
     if (ss.getId() !== VFORGE_SPREADSHEET_ID) {
@@ -159,6 +162,9 @@ function doPost(e) {
   } catch (err) {
     var message = String(err && err.stack ? err.stack : err);
     Logger.log('VFORGE SYNC FAILED: ' + message);
+    // Reject unauthenticated requests without opening the spreadsheet, storing
+    // a receipt, or allowing arbitrary callers to create failure-log entries.
+    if (!authChecked) return json_({ ok: false, verified: false, error: message });
 
     // Record failures in the target spreadsheet too. This prevents a failed
     // sync from disappearing simply because Apps Script reports "Completed".
@@ -220,6 +226,31 @@ function readReceipt_(requestId) {
   try { return JSON.parse(raw); } catch (ignore) { return null; }
 }
 
+/** Require a shared secret stored in Apps Script Script Properties. */
+function requireSyncToken_(providedToken) {
+  var expectedToken = PropertiesService.getScriptProperties().getProperty('VFORGE_SYNC_TOKEN');
+  if (!expectedToken || expectedToken.length < 32) {
+    throw new Error('Google Sheets sync is not configured securely. Set VFORGE_SYNC_TOKEN in Apps Script Script Properties to a random value of at least 32 characters.');
+  }
+  if (typeof providedToken !== 'string' || providedToken.length !== expectedToken.length ||
+      !constantTimeEquals_(providedToken, expectedToken)) {
+    throw new Error('Unauthorized sync request. Check the Google Sheets sync token in CRM Settings.');
+  }
+}
+
+function constantTimeEquals_(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string' || a.length !== b.length) return false;
+  var diff = 0;
+  for (var i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
+/** Prevent untrusted strings from becoming spreadsheet formulas. */
+function safeSheetValue_(value) {
+  if (typeof value !== 'string') return value;
+  return /^[\s]*[=+\-@]/.test(value) ? "'" + value : value;
+}
+
 function validatePayload_(data) {
   if (!data || typeof data !== 'object' || Array.isArray(data)) {
     throw new Error('Payload must be a JSON object');
@@ -269,7 +300,7 @@ function writeReport_(ss, name, rows) {
         throw new Error('Unsupported object value in ' + name + ', row ' +
           (index + 1) + ', column ' + header);
       }
-      return value;
+      return safeSheetValue_(value);
     }));
   });
 
@@ -344,8 +375,9 @@ function writeSyncLog_(ss, data, receipt, errorMessage) {
     'Request ID': data.requestId || ''
   };
   sh.appendRow(finalHeaders.map(function(header) {
-    return Object.prototype.hasOwnProperty.call(valuesByHeader, header)
+    var value = Object.prototype.hasOwnProperty.call(valuesByHeader, header)
       ? valuesByHeader[header] : '';
+    return safeSheetValue_(value);
   }));
 
   if (!errorMessage) rememberSuccessfulSync_(data);
