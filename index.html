@@ -966,7 +966,31 @@ function openTransfer(){
      items.push({productId:pid,productName:pr.name,quantity:q,price:priceInput.trim()===''?null:num(priceInput)});
    }
    var date=ctl(f,'date').value||today(),notes=ctl(f,'notes').value.trim(),groupId=backend.newId('transfers'),createdAt=new Date().toISOString();
-   return Promise.all(items.map(function(item){var d={date:date,branch:branch,productId:item.productId,productName:item.productName,quantity:item.quantity,price:item.price,notes:notes,transferGroupId:groupId,createdAt:createdAt};return save('transfers',backend.newId('transfers'),d);})).then(function(results){var ok=results.every(Boolean);if(ok)toast(items.length+' product'+(items.length===1?'':'s')+' transferred to '+branch);return ok;});
+   var records=items.map(function(item){return {id:backend.newId('transfers'),data:{date:date,branch:branch,productId:item.productId,productName:item.productName,quantity:item.quantity,price:item.price,notes:notes,transferGroupId:groupId,createdAt:createdAt}};});
+   var saved=[];
+   function rollback(error){
+     return saved.reduce(function(chain,record){return chain.then(function(){return backend.remove('transfers',record.id).catch(function(rollbackError){return {rollbackError:rollbackError};});});},Promise.resolve()).then(function(){
+       return syncStateAfterSave('transfers').catch(function(){return false;}).then(function(){
+         toast('Transfer was not fully saved. Completed entries were rolled back where possible. Please refresh and verify the transfer list before retrying.',true);
+         return false;
+       });
+     });
+   }
+   function writeNext(index){
+     if(index>=records.length){
+       return syncStateAfterSave('transfers').then(function(){
+         queueAutoSheetsSync('saved:transfers');
+         toast(items.length+' product'+(items.length===1?'':'s')+' transferred to '+branch);
+         return true;
+       }).catch(function(error){return rollback(error);});
+     }
+     var record=records[index];
+     return Promise.resolve().then(function(){return backend.save('transfers',record.id,record.data);}).then(function(){
+       saved.push(record);
+       return writeNext(index+1);
+     },rollback);
+   }
+   return writeNext(0);
  });
 }
 function custStats(){
