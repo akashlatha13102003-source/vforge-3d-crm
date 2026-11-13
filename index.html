@@ -1092,7 +1092,14 @@ function openPurchase(id){
     Array.from(extraList.querySelectorAll('[data-extra-colour]')).forEach(function(row){var name=row.querySelector('[data-extra-name]').value.trim(),picker=row.querySelector('[data-extra-hex]'),hex=safeHex(picker.value);if(!name&&!picker.dataset.touched)return;if(!name){badColour=true;return;}parsedColours.push({name:name,hex:hex});});
     if(badColour)return fail(form,'Add a name for each additional colour, or remove that colour row.');
     d.colours=parsedColours.filter(function(x,i,all){return x.name&&all.findIndex(function(y){return y.name.toLowerCase()===x.name.toLowerCase();})===i;});
-    d.key=fkey(d);d.createdAt=p?p.createdAt:new Date().toISOString();
+    d.key=fkey(d);
+    if(p&&d.key!==p.key){
+      var oldKey=p.key||fkey(p);
+      var productRefs=state.products.filter(function(product){return (product.lines||[]).some(function(line){return line.key===oldKey;});});
+      var wastageRefs=state.wastage.filter(function(entry){return entry.filamentKey===oldKey;});
+      if(productRefs.length||wastageRefs.length)return fail(form,'This filament identity is used by '+productRefs.length+' product recipe(s) and '+wastageRefs.length+' wastage record(s). Keep the brand, material and primary colour unchanged. Add a separate purchase for the new filament instead.');
+    }
+    d.createdAt=p?p.createdAt:new Date().toISOString();
     return save('filaments',p?p.id:backend.newId('filaments'),d).then(function(ok){if(ok)toast(p?'Purchase updated':'Purchase saved');return ok;});
   });
   if(p)armDelete(form,function(){return remove('filaments',p.id).then(function(ok){if(ok)toast('Purchase deleted');return ok;});});
