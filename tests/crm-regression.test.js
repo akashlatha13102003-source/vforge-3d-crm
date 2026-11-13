@@ -258,7 +258,7 @@ test('Google Sheets payload includes all report groups supported by the CRM', ()
   const end = source.indexOf('function testGoogleSheets()', start);
   assert.notEqual(end, -1, 'sheetsPayload must end before testGoogleSheets');
   const payload = source.slice(start, end);
-  for (const key of ['filament','products','sales','customers','wastage','branchTransfers']) {
+  for (const key of ['filament','products','sales','customers','wastage','branchTransfers','consumables']) {
     assert.ok(payload.includes(key + ':'), 'Sheets payload must include ' + key);
   }
 });
