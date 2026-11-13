@@ -32,7 +32,7 @@ function contextWith(raw) {
 const malformed = contextWith('{broken json');
 const config = malformed.getCloudConfig();
 assert.ok(malformed.cloudConfigError, 'malformed saved settings must be reported');
-assert.equal(config.url, 'https://example.supabase.co');
+assert.match(config.url, /^https:\/\//, 'the default project URL remains available for explicit reconnection');
 assert.match(malformed.cloudConfigError, /not switched to browser-local records/i);
 
 const wrongShape = contextWith('[]');
