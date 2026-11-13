@@ -43,6 +43,8 @@ assert.ok(doPostSource.indexOf('requireSyncToken_(data.authToken)') > doPostSour
   'POST must validate the payload before requiring the shared token and before spreadsheet writes');
 assert.ok(doPostSource.indexOf('requireSyncToken_(data.authToken)') < doPostSource.indexOf('SpreadsheetApp.openById'),
   'unauthorized requests must be rejected before opening the spreadsheet');
+assert.match(doPostSource, /if \(!authChecked\) return json_\(/,
+  'unauthenticated requests must return without entering the failure-log spreadsheet path');
 
 process.stdout.write('PASS Apps Script endpoint requires configured token before spreadsheet access\n');
 process.stdout.write('PASS formula-like strings are neutralized while numeric values remain numeric\n');
