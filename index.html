@@ -2045,8 +2045,15 @@ function refresh(silent){
   if(refreshing||!backend)return Promise.resolve();
   refreshing=true;lastRefresh=Date.now();
   var b=$('#refresh-btn');if(b){b.classList.add('busy');b.disabled=true;}
-  return Promise.all(COLS.map(function(c){return Promise.resolve(backend.fetch(c)).then(function(docs){onDocs(c,docs);});}))
-    .then(function(){if(!silent)toast('Refreshed');},function(){if(!silent)toast('Could not refresh. Check your connection and try again.',true);})
+  // Fetch every collection before mutating visible state. If any request fails,
+  // keep the last complete snapshot rather than displaying a mixture of old/new data.
+  return Promise.all(COLS.map(function(c){return Promise.resolve(backend.fetch(c));}))
+    .then(function(results){
+      COLS.forEach(function(c,index){onDocs(c,results[index]);});
+      if(!silent)toast('Refreshed');
+    },function(){
+      if(!silent)toast('Could not refresh all CRM data. Your previous view was kept unchanged. Check your connection and try again.',true);
+    })
     .then(function(){refreshing=false;var b2=$('#refresh-btn');if(b2){b2.classList.remove('busy');b2.disabled=false;}});
 }
 
