@@ -716,7 +716,18 @@ function productSavedExtraQtyForSale(productId,saleId){
   return Math.max(0,allExtra-withoutCurrentExtra);
 }
 function saleRev(s){return Math.round(saleLines(s).reduce(function(t,l){return t+num(l.finalUnit!=null?l.finalUnit:(num(l.unitPrice)*(l.priceMode==='inclusive'?1:1+num(l.gstRate)/100)))*num(l.qty);},0)*100)/100;}
-function saleTax(s){return Math.round(saleLines(s).reduce(function(t,l){return t+num(l.gstUnit)*num(l.qty);},0)*100)/100;}
+function saleTax(s){
+  return Math.round(saleLines(s).reduce(function(total,l){
+    var tax;
+    if(l.gstUnit!=null)tax=num(l.gstUnit);
+    else if(l.finalUnit!=null&&l.taxableUnit!=null)tax=num(l.finalUnit)-num(l.taxableUnit);
+    else if(l.gstRate!=null){
+      var price=num(l.unitPrice),rate=num(l.gstRate);
+      tax=l.priceMode==='inclusive'?price-price/(1+rate/100):price*rate/100;
+    }else tax=0;
+    return total+tax*Math.max(0,num(l.qty));
+  },0)*100)/100;
+}
 function saleTaxable(s){return Math.round(saleLines(s).reduce(function(t,l){return t+num(l.taxableUnit!=null?l.taxableUnit:(l.priceMode==='inclusive'?num(l.unitPrice)/(1+num(l.gstRate)/100):num(l.unitPrice)))*num(l.qty);},0)*100)/100;}
 function saleCost(s){var S=getStats();return saleLines(s).reduce(function(t,l){var saved=num(l.unitCost),prod=state.products.find(function(p){return p.id===(l.productId||s.productId);}),unit=saved>0?saved:(prod?productCost(prod,S).total:0);return t+unit*num(l.qty);},0);}
 // Profit excludes collected GST: GST is a liability, not operating revenue.
@@ -961,7 +972,7 @@ function openTransfer(){
 function custStats(){
   var m=new Map();
   state.customers.forEach(function(c){m.set(c.id,{c:c,orders:0,spent:0,last:''});});
-  state.sales.forEach(function(s){var e=m.get(s.customerId);if(e){e.orders++;e.spent+=saleRev(s);if((s.date||'')>e.last)e.last=s.date;}});
+  state.sales.forEach(function(s){var e=m.get(s.customerId);if(e){e.orders++;if(s.status!=='pending')e.spent+=saleRev(s);if((s.date||'')>e.last)e.last=s.date;}});
   return m;
 }
 function vCustomers(){
