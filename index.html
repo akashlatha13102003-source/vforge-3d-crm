@@ -1887,8 +1887,14 @@ function openSettings(){
   wireSubmit(form,function(){
     var low=Math.max(0,num(ctl(form,'low').value));
     var newUrl=ctl(form,'sheets').value.trim();
-    return save('settings','main',{currency:ctl(form,'currency').value,lowStock:low,powerRate:Math.max(0,num(ctl(form,'rate').value)),googleSheetsUrl:newUrl,googleSheetsToken:ctl(form,'sheets-token').value||s.googleSheetsToken||'',lastSheetsSync:s.lastSheetsSync||''}).then(function(ok){
-      if(ok){state.settings.googleSheetsUrl=newUrl;toast('Settings saved');}
+    var nextSettings={currency:ctl(form,'currency').value,lowStock:low,powerRate:Math.max(0,num(ctl(form,'rate').value)),googleSheetsUrl:newUrl,googleSheetsToken:ctl(form,'sheets-token').value||s.googleSheetsToken||'',lastSheetsSync:s.lastSheetsSync||''};
+    var powerRateChanged=num(s.powerRate)!==nextSettings.powerRate;
+    return save('settings','main',nextSettings).then(function(ok){
+      if(ok){
+        state.settings=Object.assign({},state.settings,nextSettings);
+        toast('Settings saved');
+        if(powerRateChanged)queueAutoSheetsSync('settings:powerRate');
+      }
       return ok;
     });
   });
