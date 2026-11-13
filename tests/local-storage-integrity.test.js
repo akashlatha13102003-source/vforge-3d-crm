@@ -15,7 +15,7 @@ function harness(initial, failWrites) {
   const data = Object.assign({}, initial || {});
   const localStorage = {
     getItem(key) { return Object.prototype.hasOwnProperty.call(data, key) ? data[key] : null; },
-    setItem(key, value) { if (failWrites) throw new Error('quota exceeded'); data[key] = String(value); },
+    setItem(key, value) { if (failWrites === 'all' || (failWrites && key !== 'vforge3d:t')) throw new Error('quota exceeded'); data[key] = String(value); },
     removeItem(key) { delete data[key]; }
   };
   const context = { COLS: ['products'], localStorage, Promise, Date, Math };
@@ -55,7 +55,7 @@ async function test(name, fn) {
   });
 
   await test('unavailable browser storage is clearly reported and writes are blocked', async () => {
-    const h = harness({}, true);
+    const h = harness({}, 'all');
     assert.equal(h.backend.kind, 'memory');
     assert.match(h.backend.warning, /changes are disabled/i);
     await assert.rejects(h.backend.save('products', 'p1', { name: 'New' }), /storage is unavailable/i);
