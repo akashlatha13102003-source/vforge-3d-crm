@@ -39,3 +39,5 @@ jobs:
         run: node tests/settings-report-sync.test.js
       - name: Run Sheets sync timestamp checks
         run: node tests/sheets-sync-timestamp.test.js
+      - name: Run local storage integrity checks
+        run: node tests/local-storage-integrity.test.js
