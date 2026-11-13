@@ -29,3 +29,5 @@ jobs:
         run: node tests/financial-integrity.test.js
       - name: Run supply history integrity checks
         run: node tests/supply-history.test.js
+      - name: Run filament identity integrity checks
+        run: node tests/filament-identity.test.js
