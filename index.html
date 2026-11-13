@@ -436,23 +436,59 @@ function makeDbBackend(db){
   };
 }
 function makeLocalBackend(){
-  var mem={},subs={},persistent=true;
+  var mem={},subs={},persistent=true,storageErrors={};
   try{localStorage.setItem('vforge3d:t','1');localStorage.removeItem('vforge3d:t');}catch(e){persistent=false;}
   function key(c){return 'vforge3d:'+c;}
-  function load(c){try{return JSON.parse(localStorage.getItem(key(c))||'[]');}catch(e){return [];}}
-  function persist(c){try{localStorage.setItem(key(c),JSON.stringify(mem[c]));}catch(e){}}
+  function load(c){
+    var raw;
+    try{
+      raw=localStorage.getItem(key(c));
+      var parsed=JSON.parse(raw||'[]');
+      if(!Array.isArray(parsed))throw new Error('Stored collection is not an array.');
+      return parsed;
+    }catch(e){
+      storageErrors[c]='Saved '+c+' data could not be read. The original browser data has been left untouched; export or recover it before replacing this collection.';
+      return [];
+    }
+  }
+  function persist(c,records){
+    if(!persistent)throw new Error('Browser storage is unavailable. Re-enable site storage and reload before changing CRM records.');
+    if(storageErrors[c])throw new Error(storageErrors[c]+' Saving is disabled to protect the existing data.');
+    var serialized=JSON.stringify(records);
+    try{
+      localStorage.setItem(key(c),serialized);
+      if(localStorage.getItem(key(c))!==serialized)throw new Error('Storage verification failed.');
+    }catch(e){
+      throw new Error('Could not persist '+c+' to browser storage. Your change was not saved. '+(e&&e.message?e.message:''));
+    }
+  }
   function notify(c){(subs[c]||[]).forEach(function(cb){cb(mem[c].slice());});}
   COLS.forEach(function(c){mem[c]=persistent?load(c):[];});
+  var issues=Object.keys(storageErrors);
   return {
     kind:persistent?'device':'memory',
-    fetch:function(col){if(persistent)mem[col]=load(col);return Promise.resolve(mem[col].slice());},
-    subscribe:function(col,cb){(subs[col]=subs[col]||[]).push(cb);cb(mem[col].slice());return function(){};},
-    save:function(col,id,data){
-      var rec=Object.assign({id:id},data),i=mem[col].findIndex(function(x){return x.id===id;});
-      if(i>=0)mem[col][i]=rec;else mem[col].push(rec);
-      persist(col);notify(col);return Promise.resolve();
+    warning:!persistent?'Browser storage is unavailable. Local CRM changes are disabled to prevent data loss. Enable site storage and reload.':issues.length?'Some saved browser data could not be read ('+issues.join(', ')+'). Those collections are protected from edits until the original data is recovered.':'',
+    fetch:function(col){
+      if(storageErrors[col])return Promise.reject(new Error(storageErrors[col]));
+      return Promise.resolve(mem[col].slice());
     },
-    remove:function(col,id){mem[col]=mem[col].filter(function(x){return x.id!==id;});persist(col);notify(col);return Promise.resolve();},
+    subscribe:function(col,cb,onErr){
+      (subs[col]=subs[col]||[]).push(cb);
+      if(storageErrors[col]){if(onErr)onErr(new Error(storageErrors[col]));}
+      else cb(mem[col].slice());
+      return function(){subs[col]=subs[col].filter(function(fn){return fn!==cb;});};
+    },
+    save:function(col,id,data){
+      var next=mem[col].slice(),rec=Object.assign({id:id},data),i=next.findIndex(function(x){return x.id===id;});
+      if(i>=0)next[i]=rec;else next.push(rec);
+      try{persist(col,next);}catch(e){return Promise.reject(e);}
+      mem[col]=next;notify(col);return Promise.resolve();
+    },
+    remove:function(col,id){
+      var next=mem[col].filter(function(x){return x.id!==id;});
+      try{persist(col,next);}catch(e){return Promise.reject(e);}
+      mem[col]=next;notify(col);return Promise.resolve();
+    },
     newId:function(){return Date.now().toString(36)+Math.random().toString(36).slice(2,8);}
   };
 }
@@ -2006,6 +2042,7 @@ function boot(){
   }).then(function(dl){
     dlCap=dl;
     renderNotice();
+    if(backend.warning)toast(backend.warning,true);
     COLS.forEach(function(c){
       backend.subscribe(c,function(docs){onDocs(c,docs);},function(err){
         if(state.storage==='cloud'&&err&&err.status===401){
