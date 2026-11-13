@@ -25,3 +25,5 @@ jobs:
         run: node tests/shared-workspace-adapter.test.js
       - name: Run financial integrity regression checks
         run: node tests/financial-integrity.test.js
+      - name: Run supply history integrity checks
+        run: node tests/supply-history.test.js
