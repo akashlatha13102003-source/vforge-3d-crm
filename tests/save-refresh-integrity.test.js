@@ -15,3 +15,5 @@ assert.ok(block.includes('return refreshAfterMutation(col,id,data,false,\'saved\
 assert.ok(block.includes('return refreshAfterMutation(col,id,null,true,\'removed\')'), 'delete must use the safe post-write path');
 assert.ok(block.includes('return false;'), 'backend write failures must still report failure');
 process.stdout.write('PASS successful writes remain successful when only the follow-up refresh fails\n');
+
+// The shared CRM regression suite also verifies that this handler preserves Sheets auto-sync coverage.
