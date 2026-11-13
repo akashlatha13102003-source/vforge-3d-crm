@@ -37,3 +37,12 @@ const mismatch = runWith({
 assert.throws(() => mismatch({ refreshToken: 'test-refresh' }), /Could not safely save the cloud connection settings/i);
 
 process.stdout.write('PASS cloud settings are verified in browser storage; failed persistence is reported\n');
+
+const connectStart = source.indexOf('function connectCloudFromForm(');
+const connectEnd = source.indexOf('\nfunction disconnectCloud()', connectStart);
+assert.ok(connectStart >= 0 && connectEnd > connectStart, 'cloud connect handler must exist');
+const connectBlock = source.slice(connectStart, connectEnd);
+assert.match(connectBlock, /try\{\s*setCloudConfig\(\{url:url,anonKey:key,email:email\}\);\s*\}catch\(storageError\)/,
+  'initial cloud config persistence errors must be shown to the user');
+assert.match(connectBlock, /cloudSession=null;\s*backend=makeUnavailableBackend\(/,
+  'session persistence failure after login must fail closed');
