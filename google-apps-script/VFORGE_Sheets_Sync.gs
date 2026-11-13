@@ -60,6 +60,7 @@ function doPost(e) {
   var data = null;
   var ss = null;
   var counts = {};
+  var authChecked = false;
 
   try {
     lock.waitLock(30000);
@@ -80,6 +81,7 @@ function doPost(e) {
     data = JSON.parse(raw);
     validatePayload_(data);
     requireSyncToken_(data.authToken);
+    authChecked = true;
 
     ss = SpreadsheetApp.openById(VFORGE_SPREADSHEET_ID);
     if (ss.getId() !== VFORGE_SPREADSHEET_ID) {
@@ -160,6 +162,9 @@ function doPost(e) {
   } catch (err) {
     var message = String(err && err.stack ? err.stack : err);
     Logger.log('VFORGE SYNC FAILED: ' + message);
+    // Reject unauthenticated requests without opening the spreadsheet, storing
+    // a receipt, or allowing arbitrary callers to create failure-log entries.
+    if (!authChecked) return json_({ ok: false, verified: false, error: message });
 
     // Record failures in the target spreadsheet too. This prevents a failed
     // sync from disappearing simply because Apps Script reports "Completed".
