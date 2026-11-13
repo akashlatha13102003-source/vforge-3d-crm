@@ -41,3 +41,5 @@ jobs:
         run: node tests/sheets-sync-timestamp.test.js
       - name: Run Sheets sync rollback checks
         run: node tests/apps-script-security.test.js
+      - name: Run local storage integrity checks
+        run: node tests/local-storage-integrity.test.js
