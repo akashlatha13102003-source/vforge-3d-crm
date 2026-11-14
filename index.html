@@ -1337,10 +1337,26 @@ function openMarketing(){
     }
     var recordId=backend.newId('marketing');
     var record={date:date,purpose:purpose,productType:isNew?'new':'existing',productId:productId,productName:productName,quantity:qty,lines:used,consumeFilament:(isNew&&!productId),filamentQuantity:isNew?made:0,quantityMade:isNew?made:qty,printerId:isNew?ctl(form,'printer').value:(products.find(function(p){return p.id===productId;})||{}).printerId||'',printHours:isNew?(Math.max(0,num(ctl(form,'hours').value))+Math.max(0,Math.min(59,num(ctl(form,'mins').value)))/60):0,otherCost:isNew?num(ctl(form,'other').value):0,filamentCost:cost.fil,electricityCost:cost.elec,totalCost:cost.total,recipient:recipient,project:project,notes:notes,createdAt:new Date().toISOString()};
-    var saveProduct=productData?save('products',productId,productData):Promise.resolve(true);
-    return saveProduct.then(function(ok){if(!ok)return false;return save('marketing',recordId,record);}).then(function(ok){if(ok)toast('Marketing entry saved');return ok;});
+    return saveMarketingEntry(productData,productId,recordId,record).then(function(ok){if(ok)toast('Marketing entry saved');return ok;});
   });
 }
+
+function saveMarketingEntry(productData,productId,recordId,record){
+  var productSave=productData?save('products',productId,productData):Promise.resolve(true);
+  return productSave.then(function(productSaved){
+    if(!productSaved)return false;
+    return save('marketing',recordId,record).then(function(marketingSaved){
+      if(marketingSaved||!productData)return marketingSaved;
+      return remove('products',productId).then(function(rolledBack){
+        toast(rolledBack
+          ?'Marketing entry could not be saved. The newly created product was removed to avoid a partial record.'
+          :'Marketing entry could not be saved, and the newly created product could not be removed. Check the Products list before retrying.',true);
+        return false;
+      });
+    });
+  });
+}
+
 function marketingLineHtml(filaments,index){
   var options='<option value="">Select filament</option>'+filaments.map(function(e){return '<option value="'+esc(e.key)+'">'+esc(e.name)+' ('+money(e.cpg,2)+'/g)</option>';}).join('');
   return '<div class="line marketing-line"><div class="field" style="flex:1;min-width:180px"><select name="filament-'+index+'" aria-label="Filament">'+options+'</select></div><input name="grams" type="number" min="0" step="any" placeholder="Grams per piece" aria-label="Grams per piece"><button type="button" class="iconbtn" data-marketing-remove-line aria-label="Remove filament">'+ICONS.x+'</button></div>';
