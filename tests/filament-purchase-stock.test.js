@@ -94,6 +94,13 @@ test('blocks deleting a purchase if the remaining stock would fall below recorde
   assert.match(error, /Deleting this purchase would leave 1000 g.*1500 g already used/i);
 });
 
+test('matches legacy purchases with missing spool counts to the stock calculation', () => {
+  const legacyPurchase = { key: 'pla|red', weight: 1000 };
+  const legacyStock = new Map([['pla|red', { bought: 1000, actualUsed: 800, name: 'PLA Red' }]]);
+  assert.equal(context.filamentPurchaseStockError(legacyPurchase, 500, 1, legacyStock), '');
+  assert.equal(context.filamentPurchaseDeleteError(legacyPurchase, legacyStock, {}), '');
+});
+
 test('does not invent a stock error when the filament has no usage entry', () => {
   assert.equal(context.filamentPurchaseStockError(purchase, 0, 1, new Map()), '');
 });
