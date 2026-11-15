@@ -1155,7 +1155,7 @@ function filamentPurchaseStockError(purchase,replacementWeight,replacementSpools
   var key=purchase&&(purchase.key||fkey(purchase));
   var entry=key&&stats&&stats.get(key);
   if(!entry)return '';
-  var previousWeight=Math.max(0,num(purchase.weight))*Math.max(1,num(purchase.spools));
+  var previousWeight=Math.max(0,num(purchase.weight))*Math.max(0,num(purchase.spools));
   var otherBought=Math.max(0,num(entry.bought)-previousWeight);
   var revisedWeight=Math.max(0,num(replacementWeight))*Math.max(1,num(replacementSpools));
   var consumed=Math.max(0,num(entry.actualUsed));
@@ -1182,7 +1182,7 @@ function filamentPurchaseDeleteError(purchase,stats,records){
   var entry=key&&stats&&stats.get(key);
   if(!entry)return '';
   var refs=filamentPurchaseReferenceCounts(key,records);
-  var otherBought=Math.max(0,num(entry.bought)-Math.max(0,num(purchase.weight))*Math.max(1,num(purchase.spools)));
+  var otherBought=Math.max(0,num(entry.bought)-Math.max(0,num(purchase.weight))*Math.max(0,num(purchase.spools)));
   if((refs.products||refs.sales||refs.marketing||refs.wastage)&&otherBought<=0.000001){
     var labels=[];
     if(refs.products)labels.push(refs.products+' product recipe(s)');
