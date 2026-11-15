@@ -1167,6 +1167,34 @@ function filamentPurchaseStockError(purchase,replacementWeight,replacementSpools
   return '';
 }
 
+function filamentPurchaseReferenceCounts(key,records){
+  records=records||{};
+  return {
+    products:(records.products||[]).filter(function(product){return (product.lines||[]).some(function(line){return line.key===key;});}).length,
+    sales:(records.sales||[]).filter(function(sale){return saleLines(sale).some(function(line){return (line.usage||sale.usage||[]).some(function(usage){return usage.key===key;});});}).length,
+    marketing:(records.marketing||[]).filter(function(entry){return (entry.lines||[]).some(function(line){return line.key===key;});}).length,
+    wastage:(records.wastage||[]).filter(function(entry){return entry.filamentKey===key;}).length
+  };
+}
+
+function filamentPurchaseDeleteError(purchase,stats,records){
+  var key=purchase&&(purchase.key||fkey(purchase));
+  var entry=key&&stats&&stats.get(key);
+  if(!entry)return '';
+  var refs=filamentPurchaseReferenceCounts(key,records);
+  var otherBought=Math.max(0,num(entry.bought)-Math.max(0,num(purchase.weight))*Math.max(1,num(purchase.spools)));
+  if((refs.products||refs.sales||refs.marketing||refs.wastage)&&otherBought<=0.000001){
+    var labels=[];
+    if(refs.products)labels.push(refs.products+' product recipe(s)');
+    if(refs.sales)labels.push(refs.sales+' sales record(s)');
+    if(refs.marketing)labels.push(refs.marketing+' Marketing record(s)');
+    if(refs.wastage)labels.push(refs.wastage+' wastage record(s)');
+    return 'Cannot delete this purchase because '+labels.join(', ')+' still reference '+(entry.name||'this filament')+' and no other purchase remains. Keep a purchase for this filament or remove/replace those references first.';
+  }
+  var stockError=filamentPurchaseStockError(purchase,0,1,stats);
+  return stockError?stockError.replace('This edit would leave','Deleting this purchase would leave'):'';
+}
+
 function openPurchase(id){
   var p=id?state.filaments.find(function(x){return x.id===id;}):null;
   if(id&&!p)return;
@@ -1235,11 +1263,8 @@ function openPurchase(id){
     if(p){
       var oldKey=p.key||fkey(p);
       if(d.key!==oldKey){
-        var productRefs=state.products.filter(function(product){return (product.lines||[]).some(function(line){return line.key===oldKey;});});
-        var wastageRefs=(state.wastage||[]).filter(function(entry){return entry.filamentKey===oldKey;});
-        var salesRefs=(state.sales||[]).filter(function(sale){return saleLines(sale).some(function(line){return (line.usage||sale.usage||[]).some(function(usage){return usage.key===oldKey;});});});
-        var marketingRefs=(state.marketing||[]).filter(function(entry){return (entry.lines||[]).some(function(line){return line.key===oldKey;});});
-        if(productRefs.length||wastageRefs.length||salesRefs.length||marketingRefs.length)return fail(form,'This filament identity is referenced by '+productRefs.length+' product recipe(s), '+salesRefs.length+' sales record(s), '+marketingRefs.length+' Marketing record(s), and '+wastageRefs.length+' wastage record(s). Keep the brand, material and primary colour unchanged. Add a separate purchase for the new filament instead.');
+        var refs=filamentPurchaseReferenceCounts(oldKey,state);
+        if(refs.products||refs.sales||refs.marketing||refs.wastage)return fail(form,'This filament identity is referenced by '+refs.products+' product recipe(s), '+refs.sales+' sales record(s), '+refs.marketing+' Marketing record(s), and '+refs.wastage+' wastage record(s). Keep the brand, material and primary colour unchanged. Add a separate purchase for the new filament instead.');
       }
       /* Recalculate from the latest in-memory records before reducing or moving this purchase. */
       statsCache=null;statsVer=-1;
@@ -1249,7 +1274,12 @@ function openPurchase(id){
     d.createdAt=p?p.createdAt:new Date().toISOString();
     return save('filaments',p?p.id:backend.newId('filaments'),d).then(function(ok){if(ok)toast(p?'Purchase updated':'Purchase saved');return ok;});
   });
-  if(p)armDelete(form,function(){return remove('filaments',p.id).then(function(ok){if(ok)toast('Purchase deleted');return ok;});});
+  if(p)armDelete(form,function(){
+    statsCache=null;statsVer=-1;
+    var deleteError=filamentPurchaseDeleteError(p,getStats(),state);
+    if(deleteError){toast(deleteError,true);return Promise.resolve(false);}
+    return remove('filaments',p.id).then(function(ok){if(ok)toast('Purchase deleted');return ok;});
+  });
 }
 
 /* ---------- forms: product ---------- */
