@@ -24,4 +24,4 @@ assert.ok(marketingRefs > guard, 'identity guard must check Marketing usage refe
 assert.ok(stockGuard > guard && save > stockGuard, 'purchase stock validation must run before saving');
 assert.match(form.slice(guard, save), /return fail\(form,/, 'blocked identity or stock edits must explain how to proceed');
 
-process.stdout.write('PASS filament identity edits are blocked while recipes or wastage reference the old key\n');
+process.stdout.write('PASS filament identity edits are blocked while any historical usage references the old key\n');
