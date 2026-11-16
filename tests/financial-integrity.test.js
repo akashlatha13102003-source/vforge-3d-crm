@@ -15,14 +15,16 @@ function extract(name) {
 }
 
 const context = {
-  state: { sales: [], customers: [] },
+  state: { sales: [], customers: [], products: [] },
   num: value => { const n = parseFloat(value); return Number.isFinite(n) ? n : 0; },
+  getStats: () => new Map(),
+  productCost: prod => prod.costInfo || { total: 0, hasCost: false },
   saleLines: null,
   saleRev: sale => (Array.isArray(sale.lineItems) ? sale.lineItems : []).reduce((sum, line) =>
     sum + Number(line.finalUnit != null ? line.finalUnit : line.unitPrice || 0) * Number(line.qty || 0), 0),
 };
 vm.createContext(context);
-vm.runInContext([extract('saleLines'), extract('saleTax'), extract('custStats')].join('\n'), context);
+vm.runInContext([extract('saleLines'), extract('saleTax'), extract('saleTaxable'), extract('saleLineCostInfo'), extract('saleCostInfo'), extract('saleCost'), extract('saleProfit'), extract('custStats')].join('\n'), context);
 
 function approx(actual, expected, label) {
   assert.ok(Math.abs(actual - expected) < 0.001, label + ': expected ' + expected + ', got ' + actual);
@@ -68,4 +70,44 @@ test('stored GST values take precedence, including an explicit zero', () => {
 test('legacy single-product invoices also receive GST fallback', () => {
   const tax = context.saleTax({ qty: 2, unitPrice: 118, priceMode: 'inclusive', gstRate: 18 });
   approx(tax, 36, 'legacy single-line GST');
+});
+
+
+test('unknown product cost is not reported as zero cost or positive profit', () => {
+  context.state = { customers: [], sales: [], products: [{ id: 'p1', costInfo: { total: 0, hasCost: false } }] };
+  const sale = { productId: 'p1', lineItems: [{ productId: 'p1', qty: 2, unitPrice: 118, taxableUnit: 100, unitCost: 0, priceMode: 'inclusive', gstRate: 18 }] };
+  assert.equal(context.saleCostInfo(sale).known, false);
+  assert.equal(context.saleCost(sale), null);
+  assert.equal(context.saleProfit(sale), null);
+});
+
+test('explicitly recorded zero cost remains a valid zero-cost snapshot', () => {
+  context.state = { customers: [], sales: [], products: [] };
+  const sale = { lineItems: [{ qty: 2, unitPrice: 118, taxableUnit: 100, unitCost: 0, unitCostKnown: true, priceMode: 'inclusive', gstRate: 18 }] };
+  assert.deepEqual(JSON.parse(JSON.stringify(context.saleCostInfo(sale))), { known: true, total: 0 });
+  approx(context.saleProfit(sale), 200, 'profit with explicit zero cost');
+});
+
+test('legacy positive unit-cost snapshots remain authoritative', () => {
+  context.state = { customers: [], sales: [], products: [{ id: 'p1', costInfo: { total: 90, hasCost: true } }] };
+  const sale = { productId: 'p1', lineItems: [{ productId: 'p1', qty: 2, unitPrice: 100, taxableUnit: 100, unitCost: 25 }] };
+  assert.equal(context.saleCost(sale), 50);
+  approx(context.saleProfit(sale), 150, 'legacy saved cost');
+});
+
+test('legacy zero-cost lines use current product cost only when it is actually known', () => {
+  context.state = { customers: [], sales: [], products: [{ id: 'p1', costInfo: { total: 30, hasCost: true } }] };
+  const sale = { productId: 'p1', lineItems: [{ productId: 'p1', qty: 2, unitPrice: 100, taxableUnit: 100, unitCost: 0 }] };
+  assert.equal(context.saleCost(sale), 60);
+  approx(context.saleProfit(sale), 140, 'legacy fallback to known product cost');
+});
+
+test('one unknown line makes a multi-product invoice profit unavailable', () => {
+  context.state = { customers: [], sales: [], products: [{ id: 'p2', costInfo: { total: 0, hasCost: false } }] };
+  const sale = { lineItems: [
+    { productId: 'p1', qty: 1, unitPrice: 100, taxableUnit: 100, unitCost: 20 },
+    { productId: 'p2', qty: 1, unitPrice: 100, taxableUnit: 100, unitCost: 0, unitCostKnown: false }
+  ] };
+  assert.equal(context.saleCostInfo(sale).known, false);
+  assert.equal(context.saleProfit(sale), null);
 });
