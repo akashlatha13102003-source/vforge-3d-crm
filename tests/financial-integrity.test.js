@@ -15,16 +15,17 @@ function extract(name) {
 }
 
 const context = {
-  state: { sales: [], customers: [], products: [] },
+  state: { sales: [], customers: [], products: [], supplies: [], printers: [], settings: { powerRate: 0 } },
   num: value => { const n = parseFloat(value); return Number.isFinite(n) ? n : 0; },
   getStats: () => new Map(),
-  productCost: prod => prod.costInfo || { total: 0, hasCost: false },
+  supplyTotals: item => item.totals || { bought: 0, unitCost: 0 },
+  powerOf: (printerId, hours) => ({ printer: (context.state.printers || []).find(p => p.id === printerId) || null, kwh: 0, cost: 0 }),
   saleLines: null,
   saleRev: sale => (Array.isArray(sale.lineItems) ? sale.lineItems : []).reduce((sum, line) =>
     sum + Number(line.finalUnit != null ? line.finalUnit : line.unitPrice || 0) * Number(line.qty || 0), 0),
 };
 vm.createContext(context);
-vm.runInContext([extract('saleLines'), extract('saleTax'), extract('saleTaxable'), extract('saleLineCostInfo'), extract('saleCostInfo'), extract('saleCost'), extract('saleProfit'), extract('custStats')].join('\n'), context);
+vm.runInContext([extract('saleLines'), extract('saleTax'), extract('saleTaxable'), extract('productCost'), extract('saleLineCostInfo'), extract('saleCostInfo'), extract('saleCost'), extract('saleProfit'), extract('custStats')].join('\n'), context);
 
 function approx(actual, expected, label) {
   assert.ok(Math.abs(actual - expected) < 0.001, label + ': expected ' + expected + ', got ' + actual);
@@ -110,4 +111,38 @@ test('one unknown line makes a multi-product invoice profit unavailable', () => 
   ] };
   assert.equal(context.saleCostInfo(sale).known, false);
   assert.equal(context.saleProfit(sale), null);
+});
+
+
+test('filament recipe without a matching purchase is not a known zero cost', () => {
+  context.state = { customers: [], sales: [], products: [], supplies: [], printers: [], settings: { powerRate: 0 } };
+  const cost = context.productCost({ lines: [{ key: 'pla-red', grams: 100 }], consumables: [], printerId: '', printHours: 0, otherCost: null }, new Map());
+  assert.equal(cost.hasCost, false);
+});
+
+test('filament recipe with a recorded purchase has a known cost', () => {
+  context.state = { customers: [], sales: [], products: [], supplies: [], printers: [], settings: { powerRate: 0 } };
+  const stats = new Map([['pla-red', { bought: 1000, cpg: 0.05 }]]);
+  const cost = context.productCost({ lines: [{ key: 'pla-red', grams: 100 }], consumables: [], printerId: '', printHours: 0, otherCost: null }, stats);
+  assert.equal(cost.hasCost, true);
+  approx(cost.fil, 5, 'filament cost');
+});
+
+test('consumable use without purchase history is not a known zero cost', () => {
+  context.state = { customers: [], sales: [], products: [], supplies: [{ id: 'glue', totals: { bought: 0, unitCost: 0 } }], printers: [], settings: { powerRate: 0 } };
+  const cost = context.productCost({ lines: [], consumables: [{ supplyId: 'glue', quantity: 1 }], printerId: '', printHours: 0, otherCost: null }, new Map());
+  assert.equal(cost.hasCost, false);
+});
+
+test('a selected printer without print time is not a known zero electricity cost', () => {
+  context.state = { customers: [], sales: [], products: [], supplies: [], printers: [{ id: 'p1', watts: 100 }], settings: { powerRate: 0 } };
+  const cost = context.productCost({ lines: [], consumables: [], printerId: 'p1', printHours: 0, otherCost: null }, new Map());
+  assert.equal(cost.hasCost, false);
+});
+
+test('an explicitly entered zero other-cost remains a known zero-cost component', () => {
+  context.state = { customers: [], sales: [], products: [], supplies: [], printers: [], settings: { powerRate: 0 } };
+  const cost = context.productCost({ lines: [], consumables: [], printerId: '', printHours: 0, otherCost: 0 }, new Map());
+  assert.equal(cost.hasCost, true);
+  assert.equal(cost.total, 0);
 });
