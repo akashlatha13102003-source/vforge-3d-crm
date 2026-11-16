@@ -743,34 +743,34 @@ function powerOf(printerId,hours){
   return {printer:pr,kwh:kwh,cost:kwh*num(state.settings.powerRate)};
 }
 function productCost(prod,S){
-  var fil=0,grams=0,consumables=0,hasCost=false,complete=true;
+  var fil=0,grams=0,consumables=0,hasCost=false,complete=true,filKnown=true,consumablesKnown=true,elecKnown=true;
   (prod.lines||[]).forEach(function(l){
     var lineGrams=Math.max(0,num(l.grams));grams+=lineGrams;
     if(lineGrams<=0)return;
     hasCost=true;
     var e=S.get(l.key);
-    if(!e||!(num(e.bought)>0)){complete=false;return;}
+    if(!e||!(num(e.bought)>0)){complete=false;filKnown=false;return;}
     fil+=lineGrams*num(e.cpg);
   });
   (prod.consumables||[]).forEach(function(c){
     var quantity=Math.max(0,num(c.quantity));if(quantity<=0)return;
     hasCost=true;
     var item=(state.supplies||[]).find(function(x){return x.id===c.supplyId;});
-    if(!item){complete=false;return;}
+    if(!item){complete=false;consumablesKnown=false;return;}
     var totals=supplyTotals(item);
-    if(!(num(totals.bought)>0)){complete=false;return;}
+    if(!(num(totals.bought)>0)){complete=false;consumablesKnown=false;return;}
     consumables+=quantity*num(totals.unitCost);
   });
   var printerId=String(prod.printerId||'').trim(),hours=num(prod.printHours),pw=powerOf(printerId,hours);
   if(printerId||hours>0){
     hasCost=true;
-    if(!printerId||!(hours>0)||!pw.printer||!(num(pw.printer.watts)>0))complete=false;
+    if(!printerId||!(hours>0)||!pw.printer||!(num(pw.printer.watts)>0)){complete=false;elecKnown=false;}
   }
   var otherKnown=prod.otherCost!=null&&prod.otherCost!=='';
   var other=otherKnown?num(prod.otherCost):0;
   if(otherKnown)hasCost=true;
   var total=fil+pw.cost+other+consumables;
-  return {fil:fil,elec:pw.cost,kwh:pw.kwh,other:other,consumables:consumables,total:total,grams:grams,hasCost:hasCost&&complete};
+  return {fil:fil,elec:pw.cost,kwh:pw.kwh,other:other,consumables:consumables,total:total,grams:grams,filKnown:filKnown,elecKnown:elecKnown,consumablesKnown:consumablesKnown,hasCost:hasCost&&complete};
 }
 function productProductionStockError(lines,quantity,stats,existingLines,existingConsumedQty,soldQty){
   var requiredQty=Math.max(Math.max(0,num(quantity)),Math.max(0,num(soldQty)));
@@ -1483,7 +1483,7 @@ function openProduct(id){
     var hrs=hoursVal(),pid=ctl(form,'printer').value;
     syncConsumables();
     var c=productCost({lines:lines.map(function(l){return {key:l.key,grams:num(l.grams)};}),consumables:consumableLines.filter(function(x){return x.supplyId&&num(x.quantity)>0;}).map(function(x){return {supplyId:x.supplyId,quantity:num(x.quantity)};}),otherCost:ctl(form,'other').value,printerId:pid,printHours:hrs},S);
-    var price=num(ctl(form,'price').value),m=price-c.total;
+    var price=num(ctl(form,'price').value),m=c.hasCost?price-c.total:null;
     var gr=ctl(form,'gstRate').value,rate=gr===''?null:num(gr),inclusive=ctl(form,'priceMode').value==='inclusive',taxable=rate==null?null:(inclusive?price/(1+rate/100):price),gst=rate==null?null:(inclusive?price-taxable:price*rate/100),finalPrice=rate==null?null:(inclusive?price:price+gst);
     var gp=$('#gst-preview',form);if(gp)gp.innerHTML=rate==null?'<span class="muted">GST not set — no tax calculation will be assumed.</span>':'<span><span class="muted">Taxable value</span> <strong>'+money(taxable,2)+'</strong></span><span><span class="muted">GST</span> <strong>'+money(gst,2)+'</strong></span><span><span class="muted">Final price</span> <strong>'+money(finalPrice,2)+'</strong></span>';
     var note=$('#powernote',form);
@@ -1491,12 +1491,12 @@ function openProduct(id){
       var pr=state.printers.find(function(x){return x.id===pid;});
       note.textContent=!pid?'Choose a printer to include electricity in the cost.':(pr?(hrs>0?(Math.round(c.kwh*1000)/1000).toLocaleString(loc())+' kWh at '+money(state.settings.powerRate,2)+' per unit = '+money(c.elec,2)+' of electricity.':'Add the print time to work out the electricity.'):'This printer was deleted, so no electricity is counted.');
     }
-    $('#live',form).innerHTML='<span><span class="muted">Filament</span> <strong>'+money(c.fil,2)+'</strong></span>'
-      +'<span><span class="muted">Electricity</span> <strong>'+money(c.elec,2)+'</strong></span>'
-      +'<span><span class="muted">Consumables</span> <strong>'+money(c.consumables,2)+'</strong></span>'
+    $('#live',form).innerHTML='<span><span class="muted">Filament</span> <strong>'+(c.filKnown?money(c.fil,2):'N/A')+'</strong></span>'
+      +'<span><span class="muted">Electricity</span> <strong>'+(c.elecKnown?money(c.elec,2):'N/A')+'</strong></span>'
+      +'<span><span class="muted">Consumables</span> <strong>'+(c.consumablesKnown?money(c.consumables,2):'N/A')+'</strong></span>'
       +'<span><span class="muted">Other cost</span> <strong>'+money(c.other,2)+'</strong></span>'
-      +'<span><span class="muted">Cost per piece</span> <strong>'+money(c.total,2)+'</strong></span>'
-      +(price>0?'<span><span class="muted">Margin</span> <strong class="'+(m<0?'neg':'')+'">'+signed(m,2)+' ('+pct(m/price*100)+')</strong></span>':'');
+      +'<span><span class="muted">Cost per piece</span> <strong>'+(c.hasCost?money(c.total,2):'N/A')+'</strong></span>'
+      +(price>0?(c.hasCost?'<span><span class="muted">Margin</span> <strong class="'+(m<0?'neg':'')+'">'+signed(m,2)+' ('+pct(m/price*100)+')</strong></span>':'<span><span class="muted">Margin</span> <strong>N/A — cost incomplete</strong></span>'):'');
   }
   form.addEventListener('input',function(e){
     if(e.target.matches('[data-filament-search]'))filterFilamentLine(e.target.closest('.line'));
