@@ -862,7 +862,7 @@ function saleLineCostInfo(s,l,S){
 function saleCostInfo(s){
   var S=getStats(),total=0,known=true;
   saleLines(s).forEach(function(l){var item=saleLineCostInfo(s,l,S);if(!item.known){known=false;return;}total+=item.total*Math.max(0,num(l.qty));});
-  return {known:known,total:known?Math.round(total*100)/100:null};
+  return {known:known,total:known?total:null};
 }
 function saleCost(s){var info=saleCostInfo(s);return info.known?info.total:null;}
 // Profit excludes collected GST: GST is a liability, not operating revenue.
