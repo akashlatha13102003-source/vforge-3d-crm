@@ -949,16 +949,16 @@ function vOverview(){
     +'<div class="fig"><span class="fig-l">Cost of making</span><strong class="fig-v">'+(costKnown?money(cost):'N/A')+'</strong><span class="fig-s">filament, power and extras</span></div>'
     +'<div class="fig"><span class="fig-l">Profit</span><strong class="fig-v'+(profit!==null&&profit<0?' neg':'')+'">'+(profit===null?'N/A':signed(profit))+'</strong><span class="fig-s">'+(profit!==null&&taxableRev>0?pct(profit/taxableRev*100)+' margin':profit===null?'Cost incomplete':'no sales yet')+'</span></div>'
     +'<div class="fig"><span class="fig-l">Awaiting payment</span><strong class="fig-v">'+money(pend)+'</strong><span class="fig-s">'+pendN+(pendN===1?' order':' orders')+'</span></div></div>';
-  var agg=new Map();
-  list.forEach(function(s){saleLines(s).forEach(function(l){var k=l.productId||l.productName,e=agg.get(k)||{name:l.productName||prodName(s),units:0,profit:0};e.units+=num(l.qty);e.profit+=num(l.taxableUnit!=null?l.taxableUnit:(l.priceMode==='inclusive'?num(l.unitPrice)/(1+num(l.gstRate||0)/100):num(l.unitPrice)))*num(l.qty)-num(l.unitCost)*num(l.qty);agg.set(k,e);});});
-  var top=Array.from(agg.values()).sort(function(a,b){return b.profit-a.profit;}).slice(0,5);
+  var agg=new Map(),costStats=getStats();
+  list.forEach(function(s){saleLines(s).forEach(function(l){var k=l.productId||l.productName,e=agg.get(k)||{name:l.productName||prodName(s),units:0,profit:0,known:true};e.units+=num(l.qty);var ci=saleLineCostInfo(s,l,costStats);if(!ci.known)e.known=false;else e.profit+=(num(l.taxableUnit!=null?l.taxableUnit:(l.priceMode==='inclusive'?num(l.unitPrice)/(1+num(l.gstRate||0)/100):num(l.unitPrice)))-ci.total)*num(l.qty);agg.set(k,e);});});
+  var top=Array.from(agg.values()).sort(function(a,b){return (b.known?b.profit:-Infinity)-(a.known?a.profit:-Infinity);}).slice(0,5);
   var recent=sortedSales(list).slice(0,6);
   var recentHtml=recent.length?'<ul class="list">'+recent.map(function(s){
     var pr=saleProfit(s),known=pr!==null;
-    return '<li class="row"><div><button class="linkish" data-open="sale:'+esc(s.id)+'">'+esc(custName(s))+'</button><span class="small muted">'+esc(prodName(s))+' \u00d7 '+saleQty(s)+', '+esc(fmtDate(s.date))+'</span></div><div class="row-r"><strong>'+money(saleRev(s))+'</strong><span class="small '+(known&&pr<0?'neg':'muted')+'">profit '+known?signed(pr):'N/A — cost incomplete'+'</span></div></li>';
+    return '<li class="row"><div><button class="linkish" data-open="sale:'+esc(s.id)+'">'+esc(custName(s))+'</button><span class="small muted">'+esc(prodName(s))+' \u00d7 '+saleQty(s)+', '+esc(fmtDate(s.date))+'</span></div><div class="row-r"><strong>'+money(saleRev(s))+'</strong><span class="small '+(known&&pr<0?'neg':'muted')+'">profit '+(known?signed(pr):'N/A — cost incomplete')+'</span></div></li>';
   }).join('')+'</ul>':'<p class="muted">No sales in this period.</p>';
   var topHtml=top.length?'<ul class="list">'+top.map(function(t){
-    return '<li class="row"><div><strong>'+esc(t.name)+'</strong><span class="small muted">'+t.units+(t.units===1?' piece sold':' pieces sold')+'</span></div><div class="row-r"><strong class="'+(t.known&&t.profit<0?'neg':'')+'">'+t.known?signed(t.profit):'N/A'+'</strong><span class="small muted">'+(t.known?'profit':'cost incomplete')+'</span></div></li>';
+    return '<li class="row"><div><strong>'+esc(t.name)+'</strong><span class="small muted">'+t.units+(t.units===1?' piece sold':' pieces sold')+'</span></div><div class="row-r"><strong class="'+(t.known&&t.profit<0?'neg':'')+'">'+(t.known?signed(t.profit):'N/A')+'</strong><span class="small muted">'+(t.known?'profit':'cost incomplete')+'</span></div></li>';
   }).join('')+'</ul>':'<p class="muted">Nothing sold in this period.</p>';
   return figs+'<div class="cols"><div>'+stock+'</div><div><section class="sec"><div class="sec-head"><h2>Recent sales</h2><button class="linkish" data-view="sales">All sales</button></div>'+recentHtml+'</section><section class="sec"><h2>Best earners</h2>'+topHtml+'</section></div></div>';
 }
@@ -1021,7 +1021,7 @@ function vSales(){
   if(!list.length)return '<p class="muted">No sales match \u201c'+esc(state.q)+'\u201d.</p>';
   var body=list.map(function(s){
     var pr=saleProfit(s),known=pr!==null;
-    return '<tr class="click" data-open="sale:'+esc(s.id)+'"><td class="hide-sm">'+esc(fmtDate(s.date))+'</td><td><button class="linkish" data-open="sale:'+esc(s.id)+'">'+esc(custName(s))+'</button><div class="small muted only-sm">'+esc(prodName(s))+' \u00d7 '+saleQty(s)+', '+esc(fmtDate(s.date))+'</div></td><td class="hide-sm">'+esc(prodName(s))+'</td><td class="num hide-sm">'+saleQty(s)+'</td><td class="num">'+money(saleRev(s))+'</td><td class="num hide-sm"><span class="'+(known&&pr<0?'neg':'')+'">'+known?signed(pr):'N/A'+'</span></td><td><span class="tag '+(s.status==='pending'?'pending':'paid')+'">'+(s.status==='pending'?'Pending':'Paid')+'</span></td></tr>';
+    return '<tr class="click" data-open="sale:'+esc(s.id)+'"><td class="hide-sm">'+esc(fmtDate(s.date))+'</td><td><button class="linkish" data-open="sale:'+esc(s.id)+'">'+esc(custName(s))+'</button><div class="small muted only-sm">'+esc(prodName(s))+' \u00d7 '+saleQty(s)+', '+esc(fmtDate(s.date))+'</div></td><td class="hide-sm">'+esc(prodName(s))+'</td><td class="num hide-sm">'+saleQty(s)+'</td><td class="num">'+money(saleRev(s))+'</td><td class="num hide-sm"><span class="'+(known&&pr<0?'neg':'')+'">'+(known?signed(pr):'N/A')+'</span></td><td><span class="tag '+(s.status==='pending'?'pending':'paid')+'">'+(s.status==='pending'?'Pending':'Paid')+'</span></td></tr>';
   }).join('');
   return '<div style="overflow-x:auto"><table><thead><tr><th class="hide-sm">Date</th><th>Customer</th><th class="hide-sm">Product</th><th class="num hide-sm">Qty</th><th class="num">Total</th><th class="num hide-sm">Profit</th><th>Payment</th></tr></thead><tbody>'+body+'</tbody></table></div>';
 }
