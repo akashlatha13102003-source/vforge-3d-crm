@@ -18,7 +18,7 @@ function extractFunction(name) {
 
 const declarations = [
   'supplyTotals', 'productGst', 'saleLines', 'saleQty', 'productSoldQty', 'productAvailableQty', 'productProductionStockError',
-  'productExtraQtyForSale', 'productSavedExtraQtyForSale', 'saleRev', 'saleTax', 'saleTaxable',
+  'productExtraQtyForSale', 'productSavedExtraQtyForSale', 'saleRev', 'saleTax', 'saleTaxable', 'saleLineCostInfo', 'saleCostInfo',
   'saleCost', 'saleProfit', 'getStats', 'powerOf', 'productCost', 'productProductionStockError', 'fmtG', 'wastageExceedsStock'
 ].map(extractFunction).join('\n');
 
