@@ -118,6 +118,7 @@ test('filament recipe without a matching purchase is not a known zero cost', () 
   context.state = { customers: [], sales: [], products: [], supplies: [], printers: [], settings: { powerRate: 0 } };
   const cost = context.productCost({ lines: [{ key: 'pla-red', grams: 100 }], consumables: [], printerId: '', printHours: 0, otherCost: null }, new Map());
   assert.equal(cost.hasCost, false);
+  assert.equal(cost.filKnown, false);
 });
 
 test('filament recipe with a recorded purchase has a known cost', () => {
@@ -132,12 +133,14 @@ test('consumable use without purchase history is not a known zero cost', () => {
   context.state = { customers: [], sales: [], products: [], supplies: [{ id: 'glue', totals: { bought: 0, unitCost: 0 } }], printers: [], settings: { powerRate: 0 } };
   const cost = context.productCost({ lines: [], consumables: [{ supplyId: 'glue', quantity: 1 }], printerId: '', printHours: 0, otherCost: null }, new Map());
   assert.equal(cost.hasCost, false);
+  assert.equal(cost.consumablesKnown, false);
 });
 
 test('a selected printer without print time is not a known zero electricity cost', () => {
   context.state = { customers: [], sales: [], products: [], supplies: [], printers: [{ id: 'p1', watts: 100 }], settings: { powerRate: 0 } };
   const cost = context.productCost({ lines: [], consumables: [], printerId: 'p1', printHours: 0, otherCost: null }, new Map());
   assert.equal(cost.hasCost, false);
+  assert.equal(cost.elecKnown, false);
 });
 
 test('an explicitly entered zero other-cost remains a known zero-cost component', () => {
