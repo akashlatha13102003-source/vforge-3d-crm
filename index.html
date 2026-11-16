@@ -743,11 +743,34 @@ function powerOf(printerId,hours){
   return {printer:pr,kwh:kwh,cost:kwh*num(state.settings.powerRate)};
 }
 function productCost(prod,S){
-  var fil=0,grams=0,consumables=0;
-  (prod.lines||[]).forEach(function(l){var e=S.get(l.key);fil+=num(l.grams)*(e?e.cpg:0);grams+=num(l.grams);});
-  (prod.consumables||[]).forEach(function(c){var item=(state.supplies||[]).find(function(x){return x.id===c.supplyId;});if(item)consumables+=num(c.quantity)*supplyTotals(item).unitCost;});
-  var pw=powerOf(prod.printerId,prod.printHours),other=num(prod.otherCost),total=fil+pw.cost+other+consumables;
-  return {fil:fil,elec:pw.cost,kwh:pw.kwh,other:other,consumables:consumables,total:total,grams:grams,hasCost:!!((prod.lines||[]).length||(prod.consumables||[]).length||prod.printerId||num(prod.otherCost))};
+  var fil=0,grams=0,consumables=0,hasCost=false,complete=true;
+  (prod.lines||[]).forEach(function(l){
+    var lineGrams=Math.max(0,num(l.grams));grams+=lineGrams;
+    if(lineGrams<=0)return;
+    hasCost=true;
+    var e=S.get(l.key);
+    if(!e||!(num(e.bought)>0)){complete=false;return;}
+    fil+=lineGrams*num(e.cpg);
+  });
+  (prod.consumables||[]).forEach(function(c){
+    var quantity=Math.max(0,num(c.quantity));if(quantity<=0)return;
+    hasCost=true;
+    var item=(state.supplies||[]).find(function(x){return x.id===c.supplyId;});
+    if(!item){complete=false;return;}
+    var totals=supplyTotals(item);
+    if(!(num(totals.bought)>0)){complete=false;return;}
+    consumables+=quantity*num(totals.unitCost);
+  });
+  var printerId=String(prod.printerId||'').trim(),hours=num(prod.printHours),pw=powerOf(printerId,hours);
+  if(printerId||hours>0){
+    hasCost=true;
+    if(!printerId||!(hours>0)||!pw.printer||!(num(pw.printer.watts)>0))complete=false;
+  }
+  var otherKnown=prod.otherCost!=null&&prod.otherCost!=='';
+  var other=otherKnown?num(prod.otherCost):0;
+  if(otherKnown)hasCost=true;
+  var total=fil+pw.cost+other+consumables;
+  return {fil:fil,elec:pw.cost,kwh:pw.kwh,other:other,consumables:consumables,total:total,grams:grams,hasCost:hasCost&&complete};
 }
 function productProductionStockError(lines,quantity,stats,existingLines,existingConsumedQty,soldQty){
   var requiredQty=Math.max(Math.max(0,num(quantity)),Math.max(0,num(soldQty)));
