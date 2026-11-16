@@ -97,7 +97,7 @@ test('legacy positive unit-cost snapshots remain authoritative', () => {
 });
 
 test('legacy zero-cost lines use current product cost only when it is actually known', () => {
-  context.state = { customers: [], sales: [], products: [{ id: 'p1', costInfo: { total: 30, hasCost: true } }] };
+  context.state = { customers: [], sales: [], products: [{ id: 'p1', otherCost: 30 }], supplies: [], printers: [], settings: { powerRate: 0 } };
   const sale = { productId: 'p1', lineItems: [{ productId: 'p1', qty: 2, unitPrice: 100, taxableUnit: 100, unitCost: 0 }] };
   assert.equal(context.saleCost(sale), 60);
   approx(context.saleProfit(sale), 140, 'legacy fallback to known product cost');
