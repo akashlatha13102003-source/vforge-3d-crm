@@ -19,7 +19,7 @@ function extractFunction(name) {
 const declarations = [
   'supplyTotals', 'productGst', 'saleLines', 'saleQty', 'productSoldQty', 'productAvailableQty', 'productProductionStockError',
   'productExtraQtyForSale', 'productSavedExtraQtyForSale', 'saleRev', 'saleTax', 'saleTaxable',
-  'saleCost', 'saleProfit', 'getStats', 'powerOf', 'productCost', 'productProductionStockError', 'fmtG', 'wastageExceedsStock'
+  'saleCost', 'saleProfit', 'getStats', 'filamentSpoolCount', 'powerOf', 'productCost', 'productProductionStockError', 'fmtG', 'wastageExceedsStock'
 ].map(extractFunction).join('\n');
 
 const context = {
@@ -45,6 +45,21 @@ function test(name, fn) {
   catch (e) { process.stderr.write('FAIL ' + name + ': ' + e.message + '\n'); process.exitCode = 1; }
 }
 
+
+test('legacy filament purchases without a spool count contribute one spool to stock and weighted cost', () => {
+  context.state = {
+    filaments: [{ id: 'legacy-spool', brand: 'Anycubic', material: 'PLA', colour: 'Red', weight: 1000, total: 1200 }],
+    products: [], sales: [], wastage: [], marketing: [], printers: [], supplies: [],
+    settings: { powerRate: 10.5 }
+  };
+  context.ver++;
+  context.statsCache = null;
+  context.statsVer = -1;
+  const stats = context.getStats().get('anycubic|pla|red');
+  approx(stats.bought, 1000, 'legacy purchase stock');
+  approx(stats.left, 1000, 'legacy remaining stock');
+  approx(stats.cpg, 1.2, 'legacy weighted cost per gram');
+});
 
 test('product consumables are included in unit cost using weighted-average purchase cost', () => {
   context.state = {
