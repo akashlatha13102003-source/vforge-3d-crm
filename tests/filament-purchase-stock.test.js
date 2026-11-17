@@ -5,7 +5,7 @@ const vm = require('node:vm');
 const assert = require('node:assert/strict');
 const source = fs.readFileSync('index.html', 'utf8');
 
-const start = source.indexOf('function filamentPurchaseStockError(');
+const start = source.indexOf('function filamentSpoolCount(');
 assert.notEqual(start, -1, 'filamentPurchaseStockError must exist');
 const end = source.indexOf('\nfunction openPurchase(', start + 10);
 assert.notEqual(end, -1, 'filament purchase helpers must end before openPurchase');
@@ -94,11 +94,17 @@ test('blocks deleting a purchase if the remaining stock would fall below recorde
   assert.match(error, /Deleting this purchase would leave 1000 g.*1500 g already used/i);
 });
 
-test('matches legacy purchases with missing spool counts to the stock calculation', () => {
+test('defaults a missing legacy spool count to one spool', () => {
+  assert.equal(context.filamentSpoolCount({ key: 'pla|red', weight: 1000 }), 1);
+  assert.equal(context.filamentSpoolCount({ key: 'pla|red', weight: 1000, spools: 2 }), 2);
+});
+
+test('blocks legacy purchase edits and deletion when the remaining stock would be below recorded usage', () => {
   const legacyPurchase = { key: 'pla|red', weight: 1000 };
   const legacyStock = new Map([['pla|red', { bought: 1000, actualUsed: 800, name: 'PLA Red' }]]);
-  assert.equal(context.filamentPurchaseStockError(legacyPurchase, 500, 1, legacyStock), '');
-  assert.equal(context.filamentPurchaseDeleteError(legacyPurchase, legacyStock, {}), '');
+  assert.match(context.filamentPurchaseStockError(legacyPurchase, 500, 1, legacyStock), /500 g.*800 g already used/i);
+  assert.equal(context.filamentPurchaseStockError(legacyPurchase, 800, 1, legacyStock), '');
+  assert.match(context.filamentPurchaseDeleteError(legacyPurchase, legacyStock, {}), /Deleting this purchase would leave 0 g.*800 g already used/i);
 });
 
 test('does not invent a stock error when the filament has no usage entry', () => {
