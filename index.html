@@ -694,7 +694,7 @@ function getStats(){
   state.filaments.forEach(function(p){
     var key=p.key||fkey(p),e=map.get(key),stamp=(p.date||'')+'|'+(p.createdAt||'');
     if(!e){e={key:key,brand:p.brand,material:p.material,colour:p.colour,hex:safeHex(p.hex),bought:0,paid:0,used:0,recipeUsed:0,productionUsed:0,saleExtraUsed:0,first:stamp,last:stamp,prods:[]};map.set(key,e);}
-    e.bought+=num(p.weight)*num(p.spools);e.paid+=num(p.total);
+    e.bought+=num(p.weight)*filamentSpoolCount(p);e.paid+=num(p.total);
     if(stamp<e.first){e.first=stamp;e.brand=p.brand;e.material=p.material;e.colour=p.colour;}
     if(stamp>=e.last){e.last=stamp;e.hex=safeHex(p.hex);}
   });
@@ -965,10 +965,10 @@ function vFilament(){
   var rows=Array.from(S.values()).sort(byName);
   var purchases=state.filaments.slice().sort(function(a,b){return (b.date||'').localeCompare(a.date||'')||(b.createdAt||'').localeCompare(a.createdAt||'');});
   var body=purchases.map(function(p){
-    var g=num(p.weight)*num(p.spools),cpg=g>0?num(p.total)/g:0;
+    var spools=filamentSpoolCount(p),g=num(p.weight)*spools,cpg=g>0?num(p.total)/g:0;
     var colours=Array.isArray(p.colours)&&p.colours.length?p.colours:[{name:p.colour||'Colour',hex:p.hex}];
     var palette='<span class="dots" aria-label="'+esc(colours.map(function(c){return c.name||'';}).join(', '))+'">'+colours.map(function(c){return '<span class="dot" title="'+esc(c.name||'Colour')+' · '+esc(safeHex(c.hex))+'" style="background:'+safeHex(c.hex)+'"></span>';}).join('')+'</span>';
-    return '<tr class="click" data-open="purchase:'+esc(p.id)+'"><td>'+esc(fmtDate(p.date))+'</td><td><button class="linkish" data-open="purchase:'+esc(p.id)+'">'+esc(fname(p))+'</button></td><td>'+esc(p.filamentType||'Single Colour')+'</td><td>'+palette+'</td><td class="hide-sm">'+num(p.spools)+' \u00d7 '+fmtG(p.weight)+'</td><td class="num">'+money(p.total)+'</td><td class="num hide-sm">'+money(cpg,2)+'</td><td class="hide-sm muted">'+esc(p.supplier||'')+'</td></tr>';
+    return '<tr class="click" data-open="purchase:'+esc(p.id)+'"><td>'+esc(fmtDate(p.date))+'</td><td><button class="linkish" data-open="purchase:'+esc(p.id)+'">'+esc(fname(p))+'</button></td><td>'+esc(p.filamentType||'Single Colour')+'</td><td>'+palette+'</td><td class="hide-sm">'+spools+' \u00d7 '+fmtG(p.weight)+'</td><td class="num">'+money(p.total)+'</td><td class="num hide-sm">'+money(cpg,2)+'</td><td class="hide-sm muted">'+esc(p.supplier||'')+'</td></tr>';
   }).join('');
   return '<section class="sec"><div class="sec-head"><h2>On the shelf</h2></div>'+rows.map(function(e){return spoolRow(e,low);}).join('')+'</section>'
     +'<section class="sec"><div class="sec-head"><h2>Purchases</h2></div><div style="overflow-x:auto"><table><thead><tr><th>Date</th><th>Filament</th><th>Colour type</th><th>Colour palette</th><th class="hide-sm">Spools</th><th class="num">Paid</th><th class="num hide-sm">Per gram</th><th class="hide-sm">Bought from</th></tr></thead><tbody>'+body+'</tbody></table></div></section>';
@@ -1151,6 +1151,56 @@ function armDelete(form,run){
 function ctl(form,n){return form.elements.namedItem(n);}
 
 /* ---------- forms: filament purchase ---------- */
+function filamentSpoolCount(purchase){
+  var value=purchase&&purchase.spools;
+  if(value==null||value==='')return 1;
+  return Math.max(0,Math.round(num(value)));
+}
+
+function filamentPurchaseStockError(purchase,replacementWeight,replacementSpools,stats){
+  var key=purchase&&(purchase.key||fkey(purchase));
+  var entry=key&&stats&&stats.get(key);
+  if(!entry)return '';
+  var previousWeight=Math.max(0,num(purchase.weight))*filamentSpoolCount(purchase);
+  var otherBought=Math.max(0,num(entry.bought)-previousWeight);
+  var revisedWeight=Math.max(0,num(replacementWeight))*Math.max(1,num(replacementSpools));
+  var consumed=Math.max(0,num(entry.actualUsed));
+  var available=otherBought+revisedWeight;
+  if(available+0.000001<consumed){
+    var minimum=Math.max(0,consumed-otherBought);
+    return 'This edit would leave '+fmtG(available)+' g of '+(entry.name||'filament')+' purchased against '+fmtG(consumed)+' g already used. Keep at least '+fmtG(minimum)+' g in this purchase or correct the usage records first.';
+  }
+  return '';
+}
+
+function filamentPurchaseReferenceCounts(key,records){
+  records=records||{};
+  return {
+    products:(records.products||[]).filter(function(product){return (product.lines||[]).some(function(line){return line.key===key;});}).length,
+    sales:(records.sales||[]).filter(function(sale){return saleLines(sale).some(function(line){return (line.usage||sale.usage||[]).some(function(usage){return usage.key===key;});});}).length,
+    marketing:(records.marketing||[]).filter(function(entry){return (entry.lines||[]).some(function(line){return line.key===key;});}).length,
+    wastage:(records.wastage||[]).filter(function(entry){return entry.filamentKey===key;}).length
+  };
+}
+
+function filamentPurchaseDeleteError(purchase,stats,records){
+  var key=purchase&&(purchase.key||fkey(purchase));
+  var entry=key&&stats&&stats.get(key);
+  if(!entry)return '';
+  var refs=filamentPurchaseReferenceCounts(key,records);
+  var otherBought=Math.max(0,num(entry.bought)-Math.max(0,num(purchase.weight))*filamentSpoolCount(purchase));
+  if((refs.products||refs.sales||refs.marketing||refs.wastage)&&otherBought<=0.000001){
+    var labels=[];
+    if(refs.products)labels.push(refs.products+' product recipe(s)');
+    if(refs.sales)labels.push(refs.sales+' sales record(s)');
+    if(refs.marketing)labels.push(refs.marketing+' Marketing record(s)');
+    if(refs.wastage)labels.push(refs.wastage+' wastage record(s)');
+    return 'Cannot delete this purchase because '+labels.join(', ')+' still reference '+(entry.name||'this filament')+' and no other purchase remains. Keep a purchase for this filament or remove/replace those references first.';
+  }
+  var stockError=filamentPurchaseStockError(purchase,0,1,stats);
+  return stockError?stockError.replace('This edit would leave','Deleting this purchase would leave'):'';
+}
+
 function openPurchase(id){
   var p=id?state.filaments.find(function(x){return x.id===id;}):null;
   if(id&&!p)return;
@@ -1172,7 +1222,7 @@ function openPurchase(id){
     +'<div class="field"><label>Additional colours <span class="opt">optional</span></label><div id="extra-colours-list" class="stack">'+extraColours.map(extraColourRow).join('')+'</div><button type="button" class="btn" id="add-extra-colour">+ Add another colour</button><p class="small muted">Enter each colour name and choose its swatch separately. Each name is saved with its hex code.</p></div>'
     +(p?'<p class="small muted" style="margin:-6px 0 0">Changing the brand, material or primary colour makes this a different filament in your stock.</p>':'')
     +'<div class="grid2"><div class="field"><label for="f-weight">Spool weight (g)</label><input id="f-weight" name="weight" type="number" inputmode="decimal" min="1" step="any" value="'+esc(v.weight)+'"></div>'
-    +'<div class="field"><label for="f-spools">Number of spools</label><input id="f-spools" name="spools" type="number" inputmode="numeric" min="1" step="1" value="'+esc(v.spools)+'"></div></div>'
+    +'<div class="field"><label for="f-spools">Number of spools</label><input id="f-spools" name="spools" type="number" inputmode="numeric" min="1" step="1" value="'+esc(filamentSpoolCount(v))+'"></div></div>'
     +'<div class="grid2"><div class="field"><label for="f-total">Total paid</label><input id="f-total" name="total" type="number" inputmode="decimal" min="0" step="any" value="'+esc(v.total)+'"></div>'
     +'<div class="field"><label for="f-date">Purchase date</label><input id="f-date" name="date" type="date" value="'+esc(v.date)+'"></div></div>'
     +'<div class="field"><label for="f-supplier">Bought from <span class="opt">optional</span></label><input id="f-supplier" name="supplier" autocomplete="off" value="'+esc(v.supplier||'')+'"></div>'
@@ -1216,16 +1266,26 @@ function openPurchase(id){
     if(badColour)return fail(form,'Add a name for each additional colour, or remove that colour row.');
     d.colours=parsedColours.filter(function(x,i,all){return x.name&&all.findIndex(function(y){return y.name.toLowerCase()===x.name.toLowerCase();})===i;});
     d.key=fkey(d);
-    if(p&&d.key!==p.key){
+    if(p){
       var oldKey=p.key||fkey(p);
-      var productRefs=state.products.filter(function(product){return (product.lines||[]).some(function(line){return line.key===oldKey;});});
-      var wastageRefs=state.wastage.filter(function(entry){return entry.filamentKey===oldKey;});
-      if(productRefs.length||wastageRefs.length)return fail(form,'This filament identity is used by '+productRefs.length+' product recipe(s) and '+wastageRefs.length+' wastage record(s). Keep the brand, material and primary colour unchanged. Add a separate purchase for the new filament instead.');
+      if(d.key!==oldKey){
+        var refs=filamentPurchaseReferenceCounts(oldKey,state);
+        if(refs.products||refs.sales||refs.marketing||refs.wastage)return fail(form,'This filament identity is referenced by '+refs.products+' product recipe(s), '+refs.sales+' sales record(s), '+refs.marketing+' Marketing record(s), and '+refs.wastage+' wastage record(s). Keep the brand, material and primary colour unchanged. Add a separate purchase for the new filament instead.');
+      }
+      /* Recalculate from the latest in-memory records before reducing or moving this purchase. */
+      statsCache=null;statsVer=-1;
+      var stockError=filamentPurchaseStockError(p,d.key===oldKey?d.weight:0,d.key===oldKey?d.spools:1,getStats());
+      if(stockError)return fail(form,stockError);
     }
     d.createdAt=p?p.createdAt:new Date().toISOString();
     return save('filaments',p?p.id:backend.newId('filaments'),d).then(function(ok){if(ok)toast(p?'Purchase updated':'Purchase saved');return ok;});
   });
-  if(p)armDelete(form,function(){return remove('filaments',p.id).then(function(ok){if(ok)toast('Purchase deleted');return ok;});});
+  if(p)armDelete(form,function(){
+    statsCache=null;statsVer=-1;
+    var deleteError=filamentPurchaseDeleteError(p,getStats(),state);
+    if(deleteError){toast(deleteError,true);return Promise.resolve(false);}
+    return remove('filaments',p.id).then(function(ok){if(ok)toast('Purchase deleted');return ok;});
+  });
 }
 
 /* ---------- forms: product ---------- */

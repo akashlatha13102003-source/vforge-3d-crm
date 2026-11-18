@@ -33,6 +33,8 @@ jobs:
         run: node tests/supply-history.test.js
       - name: Run filament identity integrity checks
         run: node tests/filament-identity.test.js
+      - name: Run filament purchase stock guard checks
+        run: node tests/filament-purchase-stock.test.js
       - name: Run transfer integrity checks
         run: node tests/transfer-integrity.test.js
       - name: Run save and refresh consistency checks
