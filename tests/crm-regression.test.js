@@ -405,3 +405,16 @@ test('automatic Google Sheets sync preserves queued changes and retries transien
   assert.match(queue, /syncGoogleSheets\(true\)/);
 });
 
+
+
+test('Filament tab search filters shelf stock and purchase history by filament and colour details', () => {
+  assert.match(source, /data-filament-tab-search/);
+  assert.match(source, /class="spool filament-search-item" data-filament-search-text=/);
+  assert.match(source, /class="click filament-search-item" data-filament-search-text=/);
+  for (const field of ['fname(p)','p.brand','p.material','p.colour','p.filamentType','p.supplier','c.name','c.hex']) {
+    assert.ok(source.includes(field), 'filament search should include ' + field);
+  }
+  assert.match(source, /terms\.every\(function\(term\)/);
+  assert.match(source, /item\.hidden=!match/);
+  assert.match(source, /data-filament-search-empty/);
+});

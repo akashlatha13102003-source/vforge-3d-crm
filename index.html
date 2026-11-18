@@ -905,7 +905,7 @@ function spoolRow(e,low){
   var pc=e.bought>0?Math.max(0,Math.min(100,e.left/e.bought*100)):0;
   var status=e.left<=0?'<span class="tag low">Out of stock</span>':(e.left<=low?'<span class="tag low">Running low</span>':'');
   var left=e.left<0?'Over by '+fmtG(-e.left):fmtG(e.left)+' left';
-  return '<div class="spool"><div class="spool-head"><span class="dot" style="background:'+safeHex(e.hex)+'"></span><strong>'+esc(e.name)+'</strong>'+status+'<span class="spool-left">'+left+'</span></div>'
+  return '<div class="spool filament-search-item" data-filament-search-text="'+esc(e.name)+'"><div class="spool-head"><span class="dot" style="background:'+safeHex(e.hex)+'"></span><strong>'+esc(e.name)+'</strong>'+status+'<span class="spool-left">'+left+'</span></div>'
     +'<div class="bar-track" role="img" aria-label="'+esc(e.name)+': '+Math.round(pc)+' percent left"><i style="width:'+pc.toFixed(1)+'%;background-color:'+safeHex(e.hex)+'"></i></div>'
     +'<div class="small muted">'+fmtG(e.bought)+' bought, '+fmtG(e.productionUsed)+' used for products made, '+fmtG(e.used)+' used in unproduced sales, '+fmtG(e.wastageUsed||0)+' wastage recorded, '+fmtG(e.marketingUsed||0)+' used for Marketing, '+fmtG(e.recipeUsed)+' configured per product piece, '+money(e.cpg,2)+' per gram</div>'
     +'<div class="small muted spool-prods">'+(e.prods&&e.prods.length?'Products using it: '+e.prods.slice().sort(byName).slice(0,4).map(function(x){return esc(x.name)+' '+fmtG(x.grams)+' each';}).join(', ')+(e.prods.length>4?' and '+(e.prods.length-4)+' more':''):'Not used in any product yet')+'</div></div>';
@@ -968,9 +968,11 @@ function vFilament(){
     var spools=filamentSpoolCount(p),g=num(p.weight)*spools,cpg=g>0?num(p.total)/g:0;
     var colours=Array.isArray(p.colours)&&p.colours.length?p.colours:[{name:p.colour||'Colour',hex:p.hex}];
     var palette='<span class="dots" aria-label="'+esc(colours.map(function(c){return c.name||'';}).join(', '))+'">'+colours.map(function(c){return '<span class="dot" title="'+esc(c.name||'Colour')+' · '+esc(safeHex(c.hex))+'" style="background:'+safeHex(c.hex)+'"></span>';}).join('')+'</span>';
-    return '<tr class="click" data-open="purchase:'+esc(p.id)+'"><td>'+esc(fmtDate(p.date))+'</td><td><button class="linkish" data-open="purchase:'+esc(p.id)+'">'+esc(fname(p))+'</button></td><td>'+esc(p.filamentType||'Single Colour')+'</td><td>'+palette+'</td><td class="hide-sm">'+spools+' \u00d7 '+fmtG(p.weight)+'</td><td class="num">'+money(p.total)+'</td><td class="num hide-sm">'+money(cpg,2)+'</td><td class="hide-sm muted">'+esc(p.supplier||'')+'</td></tr>';
+    var searchText=[fname(p),p.brand,p.material,p.colour,p.filamentType,p.supplier,p.date].concat(colours.map(function(c){return c.name+' '+c.hex;})).filter(Boolean).join(' ');
+    return '<tr class="click filament-search-item" data-filament-search-text="'+esc(searchText)+'" data-open="purchase:'+esc(p.id)+'"><td>'+esc(fmtDate(p.date))+'</td><td><button class="linkish" data-open="purchase:'+esc(p.id)+'">'+esc(fname(p))+'</button></td><td>'+esc(p.filamentType||'Single Colour')+'</td><td>'+palette+'</td><td class="hide-sm">'+spools+' \u00d7 '+fmtG(p.weight)+'</td><td class="num">'+money(p.total)+'</td><td class="num hide-sm">'+money(cpg,2)+'</td><td class="hide-sm muted">'+esc(p.supplier||'')+'</td></tr>';
   }).join('');
-  return '<section class="sec"><div class="sec-head"><h2>On the shelf</h2></div>'+rows.map(function(e){return spoolRow(e,low);}).join('')+'</section>'
+  return '<div class="field" style="max-width:520px;margin-bottom:24px"><label for="filament-tab-search">Find filament or colour</label><input id="filament-tab-search" type="search" data-filament-tab-search autocomplete="off" placeholder="Search brand, material, colour, type or supplier…" aria-label="Search filament stock and purchases"><span class="small muted">Searches both stock on the shelf and purchase history.</span></div><p class="small muted" data-filament-search-empty hidden>No filament or colour matches that search.</p>'
+    +'<section class="sec"><div class="sec-head"><h2>On the shelf</h2></div>'+rows.map(function(e){return spoolRow(e,low);}).join('')+'</section>'
     +'<section class="sec"><div class="sec-head"><h2>Purchases</h2></div><div style="overflow-x:auto"><table><thead><tr><th>Date</th><th>Filament</th><th>Colour type</th><th>Colour palette</th><th class="hide-sm">Spools</th><th class="num">Paid</th><th class="num hide-sm">Per gram</th><th class="hide-sm">Bought from</th></tr></thead><tbody>'+body+'</tbody></table></div></section>';
 }
 function vProducts(){
@@ -2122,7 +2124,13 @@ document.addEventListener('visibilitychange',function(){
   if(!document.hidden&&state.ready&&Date.now()-lastRefresh>15000)refresh(true);
 });
 document.addEventListener('input',function(e){
-  if(e.target.id==='q'){state.q=e.target.value;renderContent();}
+  if(e.target.id==='q'){state.q=e.target.value;renderContent();return;}
+  if(e.target.matches('[data-filament-tab-search]')){
+    var query=e.target.value.trim().toLowerCase(),terms=query.split(/\s+/).filter(Boolean),items=Array.prototype.slice.call(document.querySelectorAll('.filament-search-item'));
+    var visible=0;
+    items.forEach(function(item){var hay=(item.getAttribute('data-filament-search-text')||'').toLowerCase();var match=terms.every(function(term){return hay.indexOf(term)>=0;});item.hidden=!match;if(match)visible++;});
+    var empty=$('[data-filament-search-empty]');if(empty)empty.hidden=visible>0;
+  }
 });
 document.addEventListener('keydown',function(e){
   if(!drawerOpen)return;
