@@ -693,7 +693,8 @@ function getStats(){
   var map=new Map();
   state.filaments.forEach(function(p){
     var key=p.key||fkey(p),e=map.get(key),stamp=(p.date||'')+'|'+(p.createdAt||'');
-    if(!e){e={key:key,brand:p.brand,material:p.material,colour:p.colour,hex:safeHex(p.hex),bought:0,paid:0,used:0,recipeUsed:0,productionUsed:0,saleExtraUsed:0,first:stamp,last:stamp,prods:[]};map.set(key,e);}
+    if(!e){e={key:key,brand:p.brand,material:p.material,colour:p.colour,hex:safeHex(p.hex),bought:0,paid:0,costKnown:true,used:0,recipeUsed:0,productionUsed:0,saleExtraUsed:0,first:stamp,last:stamp,prods:[]};map.set(key,e);}
+    if(p.total==null||String(p.total).trim()===''||!Number.isFinite(Number(p.total))||Number(p.total)<0)e.costKnown=false;
     e.bought+=num(p.weight)*num(p.spools);e.paid+=num(p.total);
     if(stamp<e.first){e.first=stamp;e.brand=p.brand;e.material=p.material;e.colour=p.colour;}
     if(stamp>=e.last){e.last=stamp;e.hex=safeHex(p.hex);}
@@ -749,7 +750,7 @@ function productCost(prod,S){
     if(lineGrams<=0)return;
     hasCost=true;
     var e=S.get(l.key);
-    if(!e||!(num(e.bought)>0)){complete=false;filKnown=false;return;}
+    if(!e||!(num(e.bought)>0)||e.costKnown!==true){complete=false;filKnown=false;return;}
     fil+=lineGrams*num(e.cpg);
   });
   (prod.consumables||[]).forEach(function(c){
@@ -758,7 +759,7 @@ function productCost(prod,S){
     var item=(state.supplies||[]).find(function(x){return x.id===c.supplyId;});
     if(!item){complete=false;consumablesKnown=false;return;}
     var totals=supplyTotals(item);
-    if(!(num(totals.bought)>0)){complete=false;consumablesKnown=false;return;}
+    if(!(num(totals.bought)>0)||totals.costKnown!==true){complete=false;consumablesKnown=false;return;}
     consumables+=quantity*num(totals.unitCost);
   });
   var printerId=String(prod.printerId||'').trim(),hours=num(prod.printHours),pw=powerOf(printerId,hours);
@@ -1049,7 +1050,7 @@ function vSales(){
   return '<div style="overflow-x:auto"><table><thead><tr><th class="hide-sm">Date</th><th>Customer</th><th class="hide-sm">Product</th><th class="num hide-sm">Qty</th><th class="num">Total</th><th class="num hide-sm">Profit</th><th>Payment</th></tr></thead><tbody>'+body+'</tbody></table></div>';
 }
 
-function supplyTotals(item){var bought=(item.purchases||[]).reduce(function(t,x){return t+num(x.quantity);},0);var manualUsed=(item.usage||[]).reduce(function(t,x){return t+num(x.quantity);},0);var productUsed=(state.products||[]).reduce(function(total,p){return total+(p.consumables||[]).reduce(function(t,c){return t+(c.supplyId===item.id?num(c.quantity):0);},0);},0);var used=manualUsed+productUsed;var spend=(item.purchases||[]).reduce(function(t,x){return t+num(x.total);},0);return {bought:bought,used:used,left:bought-used,spend:spend,unitCost:bought?spend/bought:0};}
+function supplyTotals(item){var purchases=item.purchases||[];var bought=purchases.reduce(function(t,x){return t+num(x.quantity);},0);var manualUsed=(item.usage||[]).reduce(function(t,x){return t+num(x.quantity);},0);var productUsed=(state.products||[]).reduce(function(total,p){return total+(p.consumables||[]).reduce(function(t,c){return t+(c.supplyId===item.id?num(c.quantity):0);},0);},0);var used=manualUsed+productUsed;var spend=purchases.reduce(function(t,x){return t+num(x.total);},0);var costKnown=purchases.length>0&&purchases.every(function(x){return x&&x.total!=null&&String(x.total).trim()!==''&&Number.isFinite(Number(x.total))&&Number(x.total)>=0;});return {bought:bought,used:used,left:bought-used,spend:spend,unitCost:bought?spend/bought:0,costKnown:costKnown};}
 function vSupplies(){
  var items=state.supplies.slice().sort(byName);
  if(!items.length)return empty('No supplies tracked yet','Track glue, keychains, packaging boxes, covers, labels, tape and other non-filament stock.','buy-supply','Log first purchase');
