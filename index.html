@@ -2126,7 +2126,7 @@ document.addEventListener('visibilitychange',function(){
 document.addEventListener('input',function(e){
   if(e.target.id==='q'){state.q=e.target.value;renderContent();return;}
   if(e.target.matches('[data-filament-tab-search]')){
-    var query=e.target.value.trim().toLowerCase(),terms=query.split(/\s+/).filter(Boolean),items=$('.filament-search-item');
+    var query=e.target.value.trim().toLowerCase(),terms=query.split(/\s+/).filter(Boolean),items=Array.prototype.slice.call(document.querySelectorAll('.filament-search-item'));
     var visible=0;
     items.forEach(function(item){var hay=(item.getAttribute('data-filament-search-text')||'').toLowerCase();var match=terms.every(function(term){return hay.indexOf(term)>=0;});item.hidden=!match;if(match)visible++;});
     var empty=$('[data-filament-search-empty]');if(empty)empty.hidden=visible>0;
