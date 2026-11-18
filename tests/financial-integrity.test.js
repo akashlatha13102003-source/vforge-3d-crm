@@ -32,6 +32,19 @@ const context = {
 };
 vm.createContext(context);
 vm.runInContext([extract('saleLines'), extract('getStats'), extract('supplyTotals'), extract('saleTax'), extract('saleTaxable'), extract('productCost'), extract('saleLineCostInfo'), extract('saleCostInfo'), extract('saleCost'), extract('saleProfit'), extract('custStats')].join('\n'), context);
+const originalGetStats = context.getStats;
+context.getStats = function () {
+  const current = context.state;
+  current.filaments = current.filaments || [];
+  current.products = current.products || [];
+  current.sales = current.sales || [];
+  current.marketing = current.marketing || [];
+  current.wastage = current.wastage || [];
+  context.statsCache = null;
+  context.statsVer = -1;
+  context.ver++;
+  return originalGetStats();
+};
 
 function approx(actual, expected, label) {
   assert.ok(Math.abs(actual - expected) < 0.001, label + ': expected ' + expected + ', got ' + actual);
@@ -129,7 +142,7 @@ test('filament recipe without a matching purchase is not a known zero cost', () 
 
 test('filament recipe with a recorded purchase has a known cost', () => {
   context.state = { customers: [], sales: [], products: [], supplies: [], printers: [], settings: { powerRate: 0 } };
-  const stats = new Map([['pla-red', { bought: 1000, cpg: 0.05 }]]);
+  const stats = new Map([['pla-red', { bought: 1000, cpg: 0.05, costKnown: true }]]);
   const cost = context.productCost({ lines: [{ key: 'pla-red', grams: 100 }], consumables: [], printerId: '', printHours: 0, otherCost: null }, stats);
   assert.equal(cost.hasCost, true);
   approx(cost.fil, 5, 'filament cost');
