@@ -418,3 +418,13 @@ test('Filament tab search filters shelf stock and purchase history by filament a
   assert.match(source, /item\.hidden=!match/);
   assert.match(source, /data-filament-search-empty/);
 });
+
+
+test('Filament search query survives cloud refresh re-renders until cleared or changed', () => {
+  assert.match(source, /filamentSearch:'/);
+  assert.match(source, /search\\.value=state\\.filamentSearch\\|\\|''/);
+  assert.match(source, /function applyFilamentSearch\\(\\)/);
+  assert.match(source, /if\\(state\\.view==='filament'\\)[\\s\\S]*?applyFilamentSearch\\(\\)/);
+  assert.match(source, /state\\.filamentSearch=e\\.target\\.value/);
+  assert.match(source, /terms\\.every\\(function\\(term\\)/);
+});
