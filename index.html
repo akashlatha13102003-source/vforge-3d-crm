@@ -256,7 +256,7 @@ var ICONS={
 /* ---------- state ---------- */
 var DEFAULT_RATE=8;
 var state={filaments:[],printers:[],products:[],customers:[],sales:[],wastage:[],transfers:[],supplies:[],marketing:[],settings:{currency:'INR',lowStock:200,powerRate:DEFAULT_RATE,googleSheetsUrl:'',lastSheetsSync:''},
-  loaded:{},ready:false,view:'overview',period:'30',q:'',storage:'workspace'};
+  loaded:{},ready:false,view:'overview',period:'30',q:'',filamentSearch:'',storage:'workspace'};
 var ver=0,statsVer=-1,statsCache=null,backend=null,dlCap=null;
 
 /* ---------- formatting ---------- */
@@ -893,6 +893,16 @@ function renderContent(){
   if(!state.ready){c.innerHTML='<p class="muted">Loading your workspace\u2026</p>';return;}
   var fn={overview:vOverview,printers:vPrinters,filament:vFilament,products:vProducts,sales:vSales,customers:vCustomers,reports:vReports,wastage:vWastage,transfers:vTransfers,supplies:vSupplies,marketing:vMarketing}[state.view];
   c.innerHTML=fn();
+  if(state.view==='filament'){
+    var search=$('[data-filament-tab-search]');
+    if(search){search.value=state.filamentSearch||'';applyFilamentSearch();}
+  }
+}
+function applyFilamentSearch(){
+  var query=(state.filamentSearch||'').trim().toLowerCase(),terms=query.split(/\s+/).filter(Boolean),items=Array.prototype.slice.call(document.querySelectorAll('.filament-search-item'));
+  var visible=0;
+  items.forEach(function(item){var hay=(item.getAttribute('data-filament-search-text')||'').toLowerCase();var match=terms.every(function(term){return hay.indexOf(term)>=0;});item.hidden=!match;if(match)visible++;});
+  var empty=$('[data-filament-search-empty]');if(empty)empty.hidden=visible>0;
 }
 function render(){renderNav();renderNotice();renderToolbar();renderContent();}
 function go(view){state.view=view;state.q='';render();window.scrollTo(0,0);}
@@ -2126,10 +2136,8 @@ document.addEventListener('visibilitychange',function(){
 document.addEventListener('input',function(e){
   if(e.target.id==='q'){state.q=e.target.value;renderContent();return;}
   if(e.target.matches('[data-filament-tab-search]')){
-    var query=e.target.value.trim().toLowerCase(),terms=query.split(/\s+/).filter(Boolean),items=Array.prototype.slice.call(document.querySelectorAll('.filament-search-item'));
-    var visible=0;
-    items.forEach(function(item){var hay=(item.getAttribute('data-filament-search-text')||'').toLowerCase();var match=terms.every(function(term){return hay.indexOf(term)>=0;});item.hidden=!match;if(match)visible++;});
-    var empty=$('[data-filament-search-empty]');if(empty)empty.hidden=visible>0;
+    state.filamentSearch=e.target.value;
+    applyFilamentSearch();
   }
 });
 document.addEventListener('keydown',function(e){

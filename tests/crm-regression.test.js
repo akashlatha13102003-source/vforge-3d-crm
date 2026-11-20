@@ -418,3 +418,13 @@ test('Filament tab search filters shelf stock and purchase history by filament a
   assert.match(source, /item\.hidden=!match/);
   assert.match(source, /data-filament-search-empty/);
 });
+
+
+test('Filament search query survives cloud refresh re-renders until cleared or changed', () => {
+  assert.ok(source.includes("filamentSearch:'"), 'search query must be stored in state');
+  assert.ok(source.includes("search.value=state.filamentSearch||''"), 'query must be restored after render');
+  assert.ok(source.includes('function applyFilamentSearch()'), 'shared filter must be reusable after render');
+  assert.ok(source.includes("if(state.view==='filament')"), 'filter restoration must be limited to Filament tab');
+  assert.ok(source.includes('state.filamentSearch=e.target.value'), 'typing and clearing must update stored query');
+  assert.ok(source.includes('terms.every(function(term)'), 'all search terms must still be matched');
+});
