@@ -16,9 +16,11 @@ function extractFunction(name) {
   return source.slice(start, end).trimEnd();
 }
 
+// saleProfit depends on saleCostInfo; keep both helpers in this extracted test context.
+// saleCostInfo preserves sub-cent precision; reports round only at presentation time.
 const declarations = [
   'supplyTotals', 'productGst', 'saleLines', 'saleQty', 'productSoldQty', 'productAvailableQty', 'productProductionStockError',
-  'productExtraQtyForSale', 'productSavedExtraQtyForSale', 'saleRev', 'saleTax', 'saleTaxable',
+  'productExtraQtyForSale', 'productSavedExtraQtyForSale', 'saleRev', 'saleTax', 'saleTaxable', 'saleLineCostInfo', 'saleCostInfo',
   'saleCost', 'saleProfit', 'getStats', 'filamentSpoolCount', 'powerOf', 'productCost', 'productProductionStockError', 'fmtG', 'wastageExceedsStock'
 ].map(extractFunction).join('\n');
 
