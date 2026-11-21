@@ -31,7 +31,7 @@ const context = {
     sum + Number(line.finalUnit != null ? line.finalUnit : line.unitPrice || 0) * Number(line.qty || 0), 0),
 };
 vm.createContext(context);
-vm.runInContext([extract('saleLines'), extract('getStats'), extract('supplyTotals'), extract('saleTax'), extract('saleTaxable'), extract('productCost'), extract('saleLineCostInfo'), extract('saleCostInfo'), extract('saleCost'), extract('saleProfit'), extract('custStats')].join('\n'), context);
+vm.runInContext([extract('saleLines'), extract('filamentSpoolCount'), extract('getStats'), extract('supplyTotals'), extract('saleTax'), extract('saleTaxable'), extract('productCost'), extract('saleLineCostInfo'), extract('saleCostInfo'), extract('saleCost'), extract('saleProfit'), extract('custStats')].join('\n'), context);
 const originalGetStats = context.getStats;
 context.getStats = function () {
   const current = context.state;
